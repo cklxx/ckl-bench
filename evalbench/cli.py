@@ -729,6 +729,9 @@ def _run_smoke_step(
     if adapter_name is None:
         print(f"{label}: validated {len(cases)} cases")
         return {"summary": {"total": len(cases), "passed": len(cases), "failed": 0}}
+    smoke_cases = [case for case in cases if case.metadata.get("smoke")]
+    if smoke_cases:
+        cases = smoke_cases
     adapter = build_adapter(adapter_name, config or {})
     result = run_cases(
         cases,
