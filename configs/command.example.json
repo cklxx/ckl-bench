@@ -1,0 +1,4 @@
+{
+  "command": "python scripts/command_agent_example.py",
+  "shell": true
+}

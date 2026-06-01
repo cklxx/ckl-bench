@@ -1,0 +1,6 @@
+{
+  "responses": {
+    "chat.noisy_spec_extraction.v1": "{\"city\":\"shenzhen\",\"window\":\"02:00-03:00\",\"rollback_owner\":\"mira\"}",
+    "chat.workflow_invariant_repair.v1": "The invariant is a stable idempotency key per task attempt. Minimal repair: derive the write key from task_id plus attempt_id and reject duplicate writes before side effects."
+  }
+}
