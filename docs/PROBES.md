@@ -27,7 +27,7 @@ Agent targets:
 - `command-example`: built-in local smoke wrapper
 - `env-agent`: `EVAL_AGENT_COMMAND`
 - `codex-wrapper`: `EVAL_CODEX_COMMAND`
-- `claude-wrapper`: `EVAL_CLAUDE_COMMAND`
+- `claude-wrapper`: `EVAL_CLAUDE_COMMAND`, defaulting to `scripts/claude_code_wrapper.py` when `claude` is on PATH
 - `gemini-wrapper`: `EVAL_GEMINI_COMMAND`
 
 The command adapter requires a JSON-stdin wrapper. Mainstream CLIs are detected,

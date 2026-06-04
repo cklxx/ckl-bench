@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
-import urllib.request
 from typing import Any
 
+from evalbench.core.usage import normalize_usage
+
+from ._http import request_json
 from .base import GenerateRequest, GenerateResponse
 
 
@@ -58,26 +59,24 @@ class AnthropicAdapter:
         if system_parts:
             payload["system"] = "\n\n".join(system_parts)
 
-        req = urllib.request.Request(
+        data = request_json(
             f"{self.base_url}/v1/messages",
             data=json.dumps(payload).encode("utf-8"),
-            method="POST",
             headers={
                 "anthropic-version": self.version,
                 "content-type": "application/json",
                 "x-api-key": self.api_key,
             },
+            timeout=request.timeout_s or 120,
+            api_label="Anthropic API",
         )
-        try:
-            with urllib.request.urlopen(req, timeout=request.timeout_s or 120) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"HTTP {exc.code} from Anthropic API: {detail}") from exc
-
         text = "".join(
             part.get("text", "")
             for part in data.get("content", [])
             if isinstance(part, dict) and part.get("type") == "text"
         )
-        return GenerateResponse(text=text, raw=data, metadata={"model": self.model})
+        return GenerateResponse(
+            text=text,
+            raw=data,
+            metadata={"model": self.model, "usage": normalize_usage(data).as_dict()},
+        )

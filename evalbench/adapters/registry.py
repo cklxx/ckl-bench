@@ -10,7 +10,6 @@ from .http_json import HTTPJsonAdapter
 from .mock import MockAdapter
 from .openai_compatible import OpenAICompatibleAdapter
 
-
 BUILT_INS = {
     "anthropic": AnthropicAdapter,
     "command": CommandAdapter,

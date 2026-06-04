@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
-import urllib.request
 from typing import Any
 
+from evalbench.core.usage import normalize_usage
+
+from ._http import request_json
 from .base import GenerateRequest, GenerateResponse
 
 
@@ -53,21 +54,19 @@ class OpenAICompatibleAdapter:
         if self.max_tokens is not None:
             payload["max_tokens"] = int(self.max_tokens)
         body = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
+        data = request_json(
             f"{self.base_url}/chat/completions",
             data=body,
-            method="POST",
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
+            timeout=request.timeout_s or 120,
+            api_label="OpenAI-compatible API",
         )
-        try:
-            with urllib.request.urlopen(req, timeout=request.timeout_s or 120) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"HTTP {exc.code} from OpenAI-compatible API: {detail}") from exc
-
         text = data["choices"][0]["message"].get("content") or ""
-        return GenerateResponse(text=text, raw=data, metadata={"model": self.model})
+        return GenerateResponse(
+            text=text,
+            raw=data,
+            metadata={"model": self.model, "usage": normalize_usage(data).as_dict()},
+        )

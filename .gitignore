@@ -1,5 +1,7 @@
 runs/
 .tmp-runs/
+.tmp-verify/
+.evalbench_cache/
 .env
 .env.*
 !.env.example

@@ -68,6 +68,7 @@ class EvalBenchCLITests(unittest.TestCase):
         self.assertIn("Quick commands:", help_text)
         self.assertIn("run command agent", help_text)
         self.assertIn("report.html", help_text)
+        self.assertIn("EVB_JUDGE", help_text)
 
     def test_namespaces_lists_deepseekv4(self) -> None:
         with redirect_stdout(StringIO()) as stdout:
@@ -96,6 +97,33 @@ class EvalBenchCLITests(unittest.TestCase):
                 code = main(["run", "command", "agent", "--out", tmp, "--run-name", "agent"])
             self.assertEqual(code, 0)
             self.assertTrue((Path(tmp) / "agent" / "summary.json").exists())
+
+    def test_run_repeat_writes_pass_at_k(self) -> None:
+        import json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with redirect_stdout(StringIO()):
+                code = main(["run", "chat", "--out", tmp, "--run-name", "rep", "--repeat", "3"])
+            self.assertEqual(code, 0)
+            summary = json.loads((Path(tmp) / "rep" / "summary.json").read_text(encoding="utf-8"))
+            self.assertEqual(summary["repeat"], 3)
+            self.assertIn("pass_at_k", summary)
+
+    def test_diff_command_detects_change(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with redirect_stdout(StringIO()):
+                main(["run", "chat", "--out", tmp, "--run-name", "A"])
+                main(["run", "chat", "--out", tmp, "--run-name", "B"])
+            with redirect_stdout(StringIO()) as out:
+                code = main(["diff", str(Path(tmp) / "A"), str(Path(tmp) / "B")])
+            self.assertEqual(code, 0)
+            self.assertIn("Diff", out.getvalue())
+
+    def test_fail_under_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with redirect_stdout(StringIO()):
+                code = main(["run", "chat", "--out", tmp, "--run-name", "gate", "--fail-under", "0.99"])
+            self.assertEqual(code, 3)
 
 
 if __name__ == "__main__":

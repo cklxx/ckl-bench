@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
 import urllib.parse
-import urllib.request
 from typing import Any
 
+from evalbench.core.usage import normalize_usage
+
+from ._http import request_json
 from .base import GenerateRequest, GenerateResponse
 
 
@@ -61,22 +62,20 @@ class GeminiAdapter:
             payload["generationConfig"]["maxOutputTokens"] = int(self.max_tokens)
 
         model = urllib.parse.quote(self.model, safe="")
-        req = urllib.request.Request(
+        data = request_json(
             f"{self.base_url}/models/{model}:generateContent",
             data=json.dumps(payload).encode("utf-8"),
-            method="POST",
             headers={
                 "content-type": "application/json",
                 "x-goog-api-key": self.api_key,
             },
+            timeout=request.timeout_s or 120,
+            api_label="Gemini API",
         )
-        try:
-            with urllib.request.urlopen(req, timeout=request.timeout_s or 120) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"HTTP {exc.code} from Gemini API: {detail}") from exc
-
         parts = data["candidates"][0]["content"].get("parts", [])
         text = "".join(part.get("text", "") for part in parts if isinstance(part, dict))
-        return GenerateResponse(text=text, raw=data, metadata={"model": self.model})
+        return GenerateResponse(
+            text=text,
+            raw=data,
+            metadata={"model": self.model, "usage": normalize_usage(data).as_dict()},
+        )

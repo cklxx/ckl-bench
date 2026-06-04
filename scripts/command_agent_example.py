@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -13,11 +14,17 @@ def main() -> int:
         print(json.dumps({"text": "NO_WORKSPACE"}))
         return 0
 
-    config = Path(workspace) / "service.cfg"
-    if config.exists():
-        text = config.read_text(encoding="utf-8")
-        text = text.replace("shadow_mode=false", "shadow_mode=true")
-        config.write_text(text, encoding="utf-8")
+    root = Path(workspace)
+    bisect = root / "bisect.py"
+    if bisect.exists():
+        text = bisect.read_text(encoding="utf-8")
+        text = text.replace("len(a) - 1", "len(a)")
+        text = re.sub(
+            r"\n    if lo < len\(a\) and a\[lo\] < x:\n        return lo \+ 1\n",
+            "\n",
+            text,
+        )
+        bisect.write_text(text, encoding="utf-8")
         print(json.dumps({"text": "DONE"}))
         return 0
 

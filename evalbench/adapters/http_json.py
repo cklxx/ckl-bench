@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
-import urllib.request
 from typing import Any
 
+from evalbench.core.usage import normalize_usage
+
+from ._http import request_json
 from .base import GenerateRequest, GenerateResponse
 
 
@@ -54,24 +55,23 @@ class HTTPJsonAdapter:
         }
         body = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json", **self.headers}
-        req = urllib.request.Request(self.endpoint, data=body, headers=headers, method="POST")
         timeout = request.timeout_s or self.timeout_s
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                raw_text = resp.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"HTTP {exc.code} from {self.endpoint}: {detail}") from exc
-
-        data = json.loads(raw_text)
+        data = request_json(
+            self.endpoint,
+            data=body,
+            headers=headers,
+            timeout=timeout,
+            api_label=self.endpoint,
+        )
+        meta = {"usage": normalize_usage(data).as_dict()}
         if self.text_path:
             text = _extract_path(data, self.text_path)
-            return GenerateResponse(text=str(text), raw=data)
+            return GenerateResponse(text=str(text), raw=data, metadata=meta)
         for path in ("choices.0.message.content", "text", "response", "output", "answer"):
             try:
                 text = _extract_path(data, path)
                 if isinstance(text, str):
-                    return GenerateResponse(text=text, raw=data)
+                    return GenerateResponse(text=text, raw=data, metadata=meta)
             except (KeyError, IndexError, ValueError, TypeError):
                 continue
-        return GenerateResponse(text=raw_text, raw=data)
+        return GenerateResponse(text=json.dumps(data), raw=data, metadata=meta)

@@ -4,6 +4,15 @@ Adapters isolate the runner from model APIs and agent frameworks. The runner
 ships with mainstream API adapters, a universal command adapter, and custom
 Python adapter loading.
 
+All built-in HTTP adapters (OpenAI-compatible, Anthropic, Gemini, HTTP-JSON)
+share one helper (`evalbench/adapters/_http.py`) that retries transient failures
+(429 / 5xx / timeouts) with exponential backoff and jitter, honoring
+`Retry-After`. They also report token usage in `GenerateResponse.metadata`
+(`{"usage": {"input_tokens", "output_tokens", "total_tokens"}}`), which the
+runner sums into `summary.json` and converts to dollar cost. A custom adapter
+that sets the same `metadata["usage"]` shape gets usage/cost tracking for free.
+See [docs/ENV.md](ENV.md) for `EVB_MAX_RETRIES` and pricing overrides.
+
 ## Mock
 
 Useful for smoke tests and case authoring:
@@ -131,16 +140,17 @@ This is the universal bridge for agent frameworks.
 ```bash
 uv run evb run command agent
 uv run evb run command agent --command "python scripts/command_agent_example.py"
+uv run evb run claude-code agent
 ```
 
 The command receives stdin:
 
 ```json
 {
-  "case_id": "agent.config_patch.v1",
+  "case_id": "agent.fix_binary_search_off_by_one.v1",
   "messages": [{"role": "user", "content": "..."}],
   "prompt": "...",
-  "workspace_path": "/tmp/evalbench-agent.config_patch.v1-...",
+  "workspace_path": "/tmp/evalbench-agent.fix_binary_search_off_by_one.v1-...",
   "metadata": {},
   "timeout_s": 30
 }
@@ -164,6 +174,45 @@ uv run evb probe agent
 
 `probe` also recognizes `EVAL_CODEX_COMMAND`, `EVAL_CLAUDE_COMMAND`, and
 `EVAL_GEMINI_COMMAND` when you maintain separate wrappers.
+
+### Claude Code Wrapper
+
+`claude-code` uses `scripts/claude_code_wrapper.py`. The wrapper reads the
+evalbench JSON payload, copies the ephemeral workspace into a stable inspect
+directory, runs Claude Code there, then syncs files back for grading.
+
+```bash
+uv run evb run claude-code agent
+uv run evb probe agent
+```
+
+Relevant env:
+
+```bash
+EVAL_CLAUDE_COMMAND=python scripts/claude_code_wrapper.py
+EVB_CLAUDE_COMMAND=claude
+EVB_CLAUDE_MODEL=deepseek-v4-flash
+EVB_CLAUDE_WORKSPACE_DIR=.tmp-runs/claude-code-workspaces
+DSV4_ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
+```
+
+The model endpoint must expose Anthropic Messages API format. The wrapper maps
+`DSV4_API_KEY` or `DEEPSEEK_API_KEY` to `ANTHROPIC_API_KEY` before invoking
+Claude Code.
+
+## Judge Model
+
+Cases can use `{"kind":"judge"}` expectations for semantic grading. The judge
+uses the same target syntax as normal runs:
+
+```bash
+uv run evb run deepseekv4 chat --judge deepseekv4
+EVB_JUDGE=deepseekv4 uv run evb run deepseekv4 chat
+uv run evb run deepseekv4 chat --judge openai:gpt-4.1-mini
+```
+
+Use `--judge same` to reuse the tested adapter as the judge. API keys still live
+in `.env` or shell env.
 
 ## Custom Python Adapter
 

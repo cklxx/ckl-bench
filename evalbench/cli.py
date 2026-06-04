@@ -11,21 +11,26 @@ from pathlib import Path
 from typing import Any
 
 from evalbench.adapters import build_adapter
+from evalbench.core.cache import ResponseCache
 from evalbench.core.cases import CaseValidationError, load_cases
+from evalbench.core.compare import compare_runs, load_run
 from evalbench.core.env import EnvFileError, load_default_env
 from evalbench.core.providers import (
     ProviderRegistryError,
     load_namespace,
     load_namespaces,
     load_provider,
-    load_providers,
     provider_probe_target,
     redacted_namespace,
-    redacted_provider,
 )
-from evalbench.core.reporting import render_probe_terminal, render_terminal_report, write_probe_html_report
+from evalbench.core.reporting import (
+    render_diff_terminal,
+    render_probe_terminal,
+    render_terminal_report,
+    write_diff_html_report,
+    write_probe_html_report,
+)
 from evalbench.core.runner import RunOptions, filter_cases, run_cases
-
 
 CASE_ALIASES = {
     "all": "cases",
@@ -35,6 +40,8 @@ CASE_ALIASES = {
 
 MOCK_CONFIG_PATH = Path("configs/mock.responses.json")
 COMMAND_AGENT_EXAMPLE = "python scripts/command_agent_example.py"
+CLAUDE_CODE_WRAPPER = "python scripts/claude_code_wrapper.py"
+CLAUDE_CODE_KEY_ENVS = ["EVB_CLAUDE_API_KEY", "ANTHROPIC_API_KEY", "DSV4_API_KEY", "DEEPSEEK_API_KEY"]
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 LOCAL_BASE_URL = "http://127.0.0.1:8000/v1"
 
@@ -94,8 +101,13 @@ Mainstream APIs:
 
 Agents:
   {prog} run command agent --command "python path/to/wrapper.py"
+  {prog} run claude-code agent
   EVAL_AGENT_COMMAND="python path/to/wrapper.py" {prog} probe agent
   EVAL_CODEX_COMMAND="python wrappers/codex.py"  {prog} probe agent
+
+Judge:
+  {prog} run deepseekv4 chat --judge deepseekv4
+  EVB_JUDGE=deepseekv4 {prog} run deepseekv4 chat
 
 Outputs:
   runs/<run-id>/results.jsonl     per-case evidence
@@ -138,7 +150,7 @@ Docs:
   {prog} list
   {prog} list chat
   {prog} list agent
-  {prog} list --cases cases/chat/private_reasoning.jsonl
+  {prog} list --cases cases/chat/hard_programming.jsonl
 """,
     )
     _add_case_set_arg(list_parser)
@@ -185,6 +197,9 @@ API env:
 
 Agent wrapper env:
   EVAL_AGENT_COMMAND, EVAL_CODEX_COMMAND, EVAL_CLAUDE_COMMAND, EVAL_GEMINI_COMMAND
+
+Judge model env:
+  EVB_JUDGE=deepseekv4
 """,
     )
     probe_parser.add_argument("target", nargs="?", default="all", help="all, api, agent, or registered provider id")
@@ -202,12 +217,14 @@ Agent wrapper env:
         epilog=f"""Short forms:
   {prog} run chat
   {prog} run command agent
+  {prog} run claude-code agent
   {prog} run openai:gpt-4.1-mini chat
   {prog} run anthropic:claude-3-5-haiku-latest chat
   {prog} run gemini:gemini-3.5-flash chat
   {prog} run openrouter:openai/gpt-4.1-mini chat
   {prog} run local chat
   {prog} run deepseekv4 chat
+  {prog} run deepseekv4 chat --judge deepseekv4
 
 Full forms:
   {prog} run --adapter mock --cases cases/chat
@@ -235,16 +252,65 @@ Full forms:
     run_parser.add_argument("--case-id", action="append", default=[], help="Run only this case id")
     run_parser.add_argument("--capability", action="append", default=[], help="Run cases with capability")
     run_parser.add_argument("--limit", type=int, help="Limit number of selected cases")
+    run_parser.add_argument("--judge", help="Judge target for judge expectations, for example deepseekv4")
     run_parser.add_argument("--out", default="runs", help="Output directory")
     run_parser.add_argument("--run-name", help="Stable run directory name")
     run_parser.add_argument("--keep-workspaces", action="store_true", help="Save final agent workspaces")
     run_parser.add_argument("--include-raw", action="store_true", help="Include raw adapter responses")
     run_parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="Run each case N times for pass@k / pass^k reliability metrics",
+    )
+    run_parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="Number of cases to run in parallel (thread pool). Default 1",
+    )
+    run_parser.add_argument("--seed", type=int, default=0, help="Seed for deterministic bootstrap CIs")
+    run_parser.add_argument(
+        "--cache",
+        action="store_true",
+        help="Enable the content-addressed response cache (chat cases only)",
+    )
+    run_parser.add_argument(
+        "--cache-dir",
+        help="Cache directory (default .evalbench_cache or EVB_CACHE_DIR)",
+    )
+    run_parser.add_argument(
         "--fail-on-failed-cases",
         action="store_true",
         help="Return exit code 3 when any case fails",
     )
+    run_parser.add_argument(
+        "--fail-under",
+        type=float,
+        help="Return exit code 3 when the overall score is below this fraction (CI gate)",
+    )
     run_parser.set_defaults(func=_cmd_run)
+
+    diff_parser = subparsers.add_parser(
+        "diff",
+        help="Compare two runs and flag regressions",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Diff two runs by case: regressed, improved, unchanged, added, removed.",
+        epilog=f"""Examples:
+  {prog} diff runs/RUN_A runs/RUN_B
+  {prog} diff runs/RUN_A/summary.json runs/RUN_B/summary.json --out runs/diff.html
+  {prog} diff runs/RUN_A runs/RUN_B --fail-on-regression
+""",
+    )
+    diff_parser.add_argument("run_a", help="Baseline run dir, summary.json, or results.jsonl")
+    diff_parser.add_argument("run_b", help="Candidate run dir, summary.json, or results.jsonl")
+    diff_parser.add_argument("--out", help="Write an HTML diff report to this path")
+    diff_parser.add_argument(
+        "--fail-on-regression",
+        action="store_true",
+        help="Return exit code 3 when any case regressed",
+    )
+    diff_parser.set_defaults(func=_cmd_diff)
 
     return parser
 
@@ -370,6 +436,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         return 2
     config = _adapter_config(args)
     adapter = build_adapter(args.adapter, config)
+    judge_target = args.judge or os.environ.get("EVB_JUDGE")
+    judge_adapter = adapter if judge_target in {"same", "self"} else _build_target_adapter(judge_target)
     result = run_cases(
         selected,
         adapter,
@@ -378,6 +446,12 @@ def _cmd_run(args: argparse.Namespace) -> int:
             run_name=args.run_name,
             keep_workspaces=args.keep_workspaces,
             include_raw=args.include_raw,
+            judge_adapter=judge_adapter,
+            judge_name=judge_target,
+            repeat=getattr(args, "repeat", 1),
+            concurrency=getattr(args, "concurrency", 1),
+            seed=getattr(args, "seed", 0),
+            cache=_build_cache(args),
         ),
     )
     summary = result["summary"]
@@ -386,6 +460,30 @@ def _cmd_run(args: argparse.Namespace) -> int:
         + f"report: {result['report_path']}"
     )
     if args.fail_on_failed_cases and summary["failed"]:
+        return 3
+    if args.fail_under is not None and summary["score"] < args.fail_under:
+        return 3
+    return 0
+
+
+def _build_cache(args: argparse.Namespace):
+    enabled = getattr(args, "cache", False) or os.environ.get("EVB_CACHE") in {"1", "true", "yes"}
+    if not enabled:
+        return None
+    cache_dir = getattr(args, "cache_dir", None) or os.environ.get("EVB_CACHE_DIR") or ".evalbench_cache"
+    return ResponseCache(Path(cache_dir))
+
+
+def _cmd_diff(args: argparse.Namespace) -> int:
+    summary_a, results_a = load_run(args.run_a)
+    summary_b, results_b = load_run(args.run_b)
+    diff = compare_runs(summary_a, results_a, summary_b, results_b)
+    output = render_diff_terminal(diff)
+    if args.out:
+        report_path = write_diff_html_report(Path(args.out), diff)
+        output += f"report: {report_path}\n"
+    print(output)
+    if args.fail_on_regression and diff["counts"]["regressed"]:
         return 3
     return 0
 
@@ -447,6 +545,26 @@ def _adapter_config(args: argparse.Namespace) -> dict[str, Any]:
     return config
 
 
+def _build_target_adapter(target: str | None):
+    if not target:
+        return None
+    spec = argparse.Namespace(
+        target=target,
+        case_set="all",
+        adapter="mock",
+        config=None,
+        model=None,
+        base_url=None,
+        endpoint=None,
+        command=None,
+        temperature=None,
+        max_tokens=None,
+        header=[],
+    )
+    _apply_target_shorthand(spec)
+    return build_adapter(spec.adapter, _adapter_config(spec))
+
+
 def _apply_target_shorthand(args: argparse.Namespace) -> None:
     target = args.target
     if not target:
@@ -467,6 +585,10 @@ def _apply_target_shorthand(args: argparse.Namespace) -> None:
         return
     if target in {"mock", "command", "http-json", "openai", "openai-compatible", "anthropic", "gemini"}:
         args.adapter = target
+        return
+    if target == "claude-code":
+        args.adapter = "command"
+        args.command = os.environ.get("EVAL_CLAUDE_COMMAND") or CLAUDE_CODE_WRAPPER
         return
     if target == "openrouter":
         args.adapter = "openai"
@@ -584,14 +706,16 @@ def _agent_probe_targets(live_agents: bool) -> list[dict[str, Any]]:
             "required_env": [],
         }
     ]
-    for target_name, env_name in (
-        ("env-agent", "EVAL_AGENT_COMMAND"),
-        ("codex-wrapper", "EVAL_CODEX_COMMAND"),
-        ("claude-wrapper", "EVAL_CLAUDE_COMMAND"),
-        ("gemini-wrapper", "EVAL_GEMINI_COMMAND"),
+    for target_name, env_name, default_command in (
+        ("env-agent", "EVAL_AGENT_COMMAND", ""),
+        ("codex-wrapper", "EVAL_CODEX_COMMAND", ""),
+        ("claude-wrapper", "EVAL_CLAUDE_COMMAND", CLAUDE_CODE_WRAPPER if shutil.which("claude") else ""),
+        ("gemini-wrapper", "EVAL_GEMINI_COMMAND", ""),
     ):
-        command = os.environ.get(env_name)
+        command = os.environ.get(env_name) or default_command
         if command:
+            required_env = [env_name] if not default_command else []
+            required_env_any = CLAUDE_CODE_KEY_ENVS if env_name == "EVAL_CLAUDE_COMMAND" else []
             targets.append(
                 {
                     "target": target_name,
@@ -599,7 +723,8 @@ def _agent_probe_targets(live_agents: bool) -> list[dict[str, Any]]:
                     "adapter": "command",
                     "config": {"command": command, "shell": True},
                     "case_set": "agent",
-                    "required_env": [env_name],
+                    "required_env": required_env,
+                    "required_env_any": required_env_any,
                 }
             )
         else:
