@@ -174,21 +174,21 @@ export function ProgressPage({ runId }: ProgressPageProps) {
       {byCapability.size > 0 && (
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-muted-foreground">By Capability</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
             {Array.from(byCapability.entries())
               .sort(([a], [b]) => a.localeCompare(b))
               .map(([cap, data]) => {
                 const capPct = data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
                 return (
-                  <Card key={cap}>
-                    <CardContent className="p-4">
-                      <div className="mb-2 flex items-center justify-between">
+                  <Card key={cap} className="flex min-h-[130px] flex-col">
+                    <CardContent className="flex flex-1 flex-col p-5">
+                      <div className="mb-3 flex items-center justify-between">
                         <span className="text-sm font-semibold capitalize">{cap}</span>
                         <Badge variant="secondary" className="text-[10px]">
                           {data.passed}/{data.total} passed
                         </Badge>
                       </div>
-                      <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div className="mb-3 mt-auto h-2 w-full overflow-hidden rounded-full bg-muted">
                         <div
                           className="h-full rounded-full bg-success transition-all duration-300"
                           style={{ width: `${capPct}%` }}

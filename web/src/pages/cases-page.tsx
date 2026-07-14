@@ -166,7 +166,7 @@ export function CasesPage() {
 
       {/* Pack cover cards gallery */}
       {!selectedPack && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
           {packs.map((pack) => (
             <PackCard
               key={pack.name}
@@ -191,7 +191,7 @@ export function CasesPage() {
               {currentPack.cases.length} case{currentPack.cases.length !== 1 ? "s" : ""}
             </Badge>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
             {currentPack.cases.map((c) => (
               <CaseCard
                 key={c.id}
@@ -220,26 +220,26 @@ function PackCard({ pack, onClick }: { pack: PackInfo; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="group relative overflow-hidden rounded-xl bg-card p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+      className="group relative flex min-h-[200px] flex-col overflow-hidden rounded-xl bg-card p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
     >
       {/* Accent gradient bar at top */}
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary/60 to-primary/20" />
 
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Box className="h-5 w-5" />
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Box className="h-6 w-6" />
         </div>
         <Badge variant="secondary" className="text-xs">
           {pack.cases.length}
         </Badge>
       </div>
 
-      <h3 className="mb-1 text-lg font-bold capitalize tracking-tight">{pack.name}</h3>
-      <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">
+      <h3 className="mb-1.5 text-lg font-bold capitalize tracking-tight">{pack.name}</h3>
+      <p className="mb-4 flex-1 text-xs leading-relaxed text-muted-foreground">
         {PACK_DESC[pack.name] || `${pack.cases.length} cases`}
       </p>
 
-      <div className="flex flex-wrap gap-1">
+      <div className="mt-auto flex flex-wrap gap-1">
         {pack.capabilities.slice(0, 4).map((cap) => (
           <Badge key={cap} variant="outline" className="text-[10px]">{cap}</Badge>
         ))}
@@ -261,8 +261,8 @@ function CaseCard({
   onDelete: () => void;
 }) {
   return (
-    <div className="group relative rounded-xl bg-card p-4 shadow-sm transition-shadow hover:shadow-md">
-      <div className="mb-2 flex items-start justify-between gap-2">
+    <div className="group relative flex min-h-[140px] flex-col rounded-xl bg-card p-5 shadow-sm transition-shadow hover:shadow-md">
+      <div className="mb-3 flex items-start justify-between gap-2">
         <h4 className="text-sm font-medium leading-snug">{caseItem.title}</h4>
         <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onEdit}>
@@ -273,13 +273,13 @@ function CaseCard({
           </Button>
         </div>
       </div>
-      <div className="mb-2 flex flex-wrap gap-1">
+      <div className="mb-3 flex flex-1 flex-wrap gap-1 content-start">
         {caseItem.capability.map((cap) => (
           <Badge key={cap} variant="secondary" className="text-[10px]">{cap}</Badge>
         ))}
       </div>
       {caseItem.difficulty && (
-        <div className="flex items-center gap-1.5">
+        <div className="mt-auto flex items-center gap-1.5">
           <span className="text-[11px] text-muted-foreground">Difficulty</span>
           <span className={`text-[11px] font-medium capitalize ${difficultyColor(caseItem.difficulty)}`}>
             {caseItem.difficulty}
