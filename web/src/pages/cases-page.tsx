@@ -167,7 +167,7 @@ export function CasesPage() {
               </button>
               {isExpanded && (
                 <CardContent className="border-t border-border/50 bg-muted/20 p-4">
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid gap-3">
                     {packCases.map((c) => (
                       <CaseCard
                         key={c.id}
