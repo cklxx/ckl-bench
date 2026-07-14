@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { getRun, getRunProgress, ProgressSocket } from "@/lib/api";
-import type { RunInfo, CaseProgress } from "@/lib/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getRun, getRunProgress, listCases, ProgressSocket } from "@/lib/api";
+import type { RunInfo, CaseProgress, CaseListItem } from "@/lib/types";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
@@ -10,24 +10,25 @@ interface ProgressPageProps {
   runId: string;
 }
 
-function statusColor(status: string): "default" | "secondary" | "destructive" | "outline" {
+function statusBadge(status: string): { variant: "default" | "secondary" | "destructive" | "outline"; label: string } {
   switch (status) {
     case "completed":
     case "passed":
-      return "default";
+      return { variant: "default", label: status };
     case "running":
     case "pending":
-      return "secondary";
+      return { variant: "secondary", label: status };
     case "failed":
     case "cancelled":
-      return "destructive";
+      return { variant: "destructive", label: status };
     default:
-      return "outline";
+      return { variant: "outline", label: status };
   }
 }
 
 export function ProgressPage({ runId }: ProgressPageProps) {
   const [run, setRun] = useState<RunInfo | null>(null);
+  const [cases, setCases] = useState<CaseListItem[]>([]);
   const [error, setError] = useState("");
   const [wsConnected, setWsConnected] = useState(false);
 
@@ -39,13 +40,13 @@ export function ProgressPage({ runId }: ProgressPageProps) {
 
   useEffect(() => {
     refresh();
+    listCases().then(setCases).catch(() => {});
   }, [runId]);
 
   // WebSocket for live updates.
   useEffect(() => {
     if (!runId) return;
     const socket = new ProgressSocket(run?.progress ? undefined : undefined);
-    // ponytail: ws_port comes from config; fallback to polling if WS fails.
     socket.on((event: any) => {
       if (event.run_id !== runId) return;
       setRun((prev) => {
@@ -87,13 +88,46 @@ export function ProgressPage({ runId }: ProgressPageProps) {
   }
 
   const progress = run.progress || { total_cases: 0, cases: {} };
-  const cases = progress.cases || {};
-  const totalCases = progress.total_cases || Object.keys(cases).length;
-  const completedCases = Object.values(cases).filter((c) => c.status === "completed" || c.status === "failed").length;
+  const progCases = progress.cases || {};
+  const totalCases = progress.total_cases || Object.keys(progCases).length;
+  const completedCases = Object.values(progCases).filter((c) => c.status === "completed" || c.status === "failed").length;
+  const passedCases = Object.values(progCases).filter((c) => c.status === "completed" && c.passed !== false).length;
   const pct = totalCases > 0 ? Math.round((completedCases / totalCases) * 100) : 0;
 
+  // Build case_id → capability map.
+  const capMap = new Map<string, string[]>();
+  for (const c of cases) {
+    capMap.set(c.id, c.capability || []);
+  }
+
+  // Group progress by capability.
+  const byCapability = new Map<string, { total: number; completed: number; passed: number; failed: number; running: number; cases: Array<{ id: string; cp: CaseProgress }> }>();
+  for (const [caseId, cp] of Object.entries(progCases)) {
+    const caps = capMap.get(caseId) || [];
+    const keys = caps.length > 0 ? caps : ["uncategorized"];
+    for (const cap of keys) {
+      if (!byCapability.has(cap)) {
+        byCapability.set(cap, { total: 0, completed: 0, passed: 0, failed: 0, running: 0, cases: [] });
+      }
+      const bucket = byCapability.get(cap)!;
+      bucket.total++;
+      bucket.cases.push({ id: caseId, cp });
+      if (cp.status === "completed") {
+        bucket.completed++;
+        if (cp.passed !== false) bucket.passed++;
+      } else if (cp.status === "failed") {
+        bucket.failed++;
+        bucket.completed++;
+      } else if (cp.status === "running") {
+        bucket.running++;
+      }
+    }
+  }
+
+  const sb = statusBadge(run.status);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold">Run Progress</h1>
@@ -105,7 +139,7 @@ export function ProgressPage({ runId }: ProgressPageProps) {
           <Badge variant={wsConnected ? "default" : "secondary"}>
             {wsConnected ? "Live" : "Polling"}
           </Badge>
-          <Badge variant={statusColor(run.status)}>{run.status}</Badge>
+          <Badge variant={sb.variant}>{sb.label}</Badge>
           <Button variant="ghost" size="icon" onClick={refresh}>
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -113,55 +147,87 @@ export function ProgressPage({ runId }: ProgressPageProps) {
       </div>
 
       {run.error && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {run.error}
         </div>
       )}
 
+      {/* Overall progress card */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Overall Progress</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span>{completedCases} / {totalCases} cases</span>
-              <span className="font-medium">{pct}%</span>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-primary transition-all"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
+        <CardContent className="p-5">
+          <div className="mb-3 flex items-center justify-between text-sm">
+            <span className="font-medium">Overall</span>
+            <span className="tabular-nums text-muted-foreground">
+              {completedCases}/{totalCases} cases &middot; {passedCases} passed &middot; {pct}%
+            </span>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all duration-300"
+              style={{ width: `${pct}%` }}
+            />
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Cases</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {Object.entries(cases).map(([caseId, cp]) => (
-              <CaseRow key={caseId} caseId={caseId} cp={cp} />
-            ))}
-            {Object.keys(cases).length === 0 && (
-              <p className="text-sm text-muted-foreground">No cases started yet.</p>
-            )}
+      {/* Category cards */}
+      {byCapability.size > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold text-muted-foreground">By Capability</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from(byCapability.entries())
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([cap, data]) => {
+                const capPct = data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
+                return (
+                  <Card key={cap}>
+                    <CardContent className="p-4">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-semibold capitalize">{cap}</span>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {data.passed}/{data.total} passed
+                        </Badge>
+                      </div>
+                      <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-success transition-all duration-300"
+                          style={{ width: `${capPct}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                        <span className="text-success">✓ {data.passed}</span>
+                        {data.failed > 0 && <span className="text-destructive">✗ {data.failed}</span>}
+                        {data.running > 0 && <span className="text-warning">… {data.running}</span>}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      )}
+
+      {/* Case list */}
+      <div className="space-y-2">
+        <h2 className="text-sm font-semibold text-muted-foreground">Cases</h2>
+        {Object.entries(progCases).map(([caseId, cp]) => (
+          <CaseRow key={caseId} caseId={caseId} cp={cp} />
+        ))}
+        {Object.keys(progCases).length === 0 && (
+          <p className="text-sm text-muted-foreground">No cases started yet.</p>
+        )}
+      </div>
     </div>
   );
 }
 
 function CaseRow({ caseId, cp }: { caseId: string; cp: CaseProgress }) {
+  const sb = statusBadge(cp.status);
+  const title = caseId.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   return (
-    <div className="flex items-center justify-between rounded-md border px-3 py-2">
+    <div className="flex items-center justify-between rounded-lg bg-background px-4 py-3 shadow-sm">
       <div className="flex items-center gap-2">
-        <span className="font-mono text-xs">{caseId}</span>
+        <span className="text-sm font-medium">{title}</span>
         <Badge variant="outline" className="text-[10px]">
           attempt {cp.attempt}
         </Badge>
@@ -170,7 +236,7 @@ function CaseRow({ caseId, cp }: { caseId: string; cp: CaseProgress }) {
         {cp.score != null && (
           <span className="text-sm font-medium tabular-nums">{cp.score.toFixed(2)}</span>
         )}
-        <Badge variant={statusColor(cp.status)}>{cp.status}</Badge>
+        <Badge variant={sb.variant}>{sb.label}</Badge>
       </div>
     </div>
   );

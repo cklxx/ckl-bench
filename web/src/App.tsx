@@ -11,7 +11,6 @@ import { ProgressPage } from "@/pages/progress-page";
 import { ReportsPage } from "@/pages/reports-page";
 import { Sidebar, type AppPage } from "@/components/sidebar";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 
 export default function App() {
   const data = readData();
@@ -26,7 +25,7 @@ export default function App() {
       <div className="flex h-screen bg-background text-foreground">
         <Sidebar active={appPage} onNavigate={setAppPage} />
         <div className="flex flex-1 flex-col overflow-hidden">
-          <header className="sticky top-0 z-10 flex h-12 items-center justify-between border-b bg-background/80 px-4 backdrop-blur">
+          <header className="sticky top-0 z-10 flex h-12 items-center justify-between bg-background/80 px-4 backdrop-blur">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold tracking-tight">ckl-bench</span>
               <Badge variant="muted" className="text-[10px] uppercase">app</Badge>
@@ -55,7 +54,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
+      <header className="sticky top-0 z-10 bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-12 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold tracking-tight">ckl-bench</span>
@@ -75,7 +74,6 @@ export default function App() {
         )}
       </main>
 
-      <Separator />
       <footer className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
         <p className="text-xs text-muted-foreground">
           ckl-bench &middot; generated evaluation report

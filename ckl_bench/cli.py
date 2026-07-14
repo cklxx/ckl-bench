@@ -374,6 +374,29 @@ Full forms:
     serve_parser.add_argument("--daemon", action="store_true", help="Run in background")
     serve_parser.set_defaults(func=_cmd_serve)
 
+    # --- demo: one-click start + demo run + open browser ---------------------
+    demo_parser = subparsers.add_parser(
+        "demo",
+        help="One-click demo: start server, run a sample eval, open browser",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=(
+            "Start the dashboard server, auto-launch a demo evaluation with the "
+            "mock adapter, and open the browser to the live progress page — "
+            "all with a single command."
+        ),
+        epilog=f"""Examples:
+  {prog} demo
+  {prog} demo --port 9000
+  {prog} demo --cases 5
+""",
+    )
+    demo_parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
+    demo_parser.add_argument("--port", type=int, default=8765, help="Bind port (default: 8765)")
+    demo_parser.add_argument("--runs", default="runs", help="Runs directory (default: runs)")
+    demo_parser.add_argument("--cases", default="cases", help="Cases directory (default: cases)")
+    demo_parser.add_argument("--cases-count", type=int, default=3, help="Number of cases to run (default: 3)")
+    demo_parser.set_defaults(func=_cmd_demo)
+
     return parser
 
 
@@ -697,6 +720,103 @@ def _pid_alive(pid: int) -> bool:
         return True
     except (ProcessLookupError, PermissionError):
         return False
+
+
+def _cmd_demo(args: argparse.Namespace) -> int:
+    """One-click demo: start server, launch a mock run, open browser."""
+    import threading
+    import urllib.request
+    import webbrowser
+
+    host = args.host
+    port = args.port
+    base = f"http://{host}:{port}"
+
+    # Step 1: start the server in a background thread if not already running.
+    if not _is_server_running():
+        from ckl_bench.core.server import BenchServer
+
+        print("Starting ckl-bench dashboard server...")
+        server = BenchServer(
+            host=host, port=port,
+            runs_dir=args.runs, cases_dir=args.cases,
+        )
+        _write_pid(os.getpid())
+        thread = threading.Thread(
+            target=server.start, kwargs={"blocking": True},
+            name="ckl-demo-server", daemon=True,
+        )
+        thread.start()
+        # Wait for the server to be ready.
+        import time as _time
+        deadline = _time.time() + 15
+        while _time.time() < deadline:
+            try:
+                with urllib.request.urlopen(f"{base}/api/config", timeout=2) as resp:
+                    if resp.status == 200:
+                        break
+            except Exception:
+                pass
+            _time.sleep(0.3)
+        else:
+            print("error: server did not start in time", file=sys.stderr)
+            return 1
+        print(f"Server running at {base}")
+    else:
+        pid = _read_pid()
+        print(f"Server already running at {base} (pid {pid})")
+
+    # Step 2: fetch available cases and pick a few.
+    try:
+        with urllib.request.urlopen(f"{base}/api/cases", timeout=5) as resp:
+            cases = json.loads(resp.read().decode())
+    except Exception as exc:
+        print(f"error: could not fetch cases: {exc}", file=sys.stderr)
+        return 1
+
+    count = min(args.cases_count, len(cases))
+    case_ids = [c["id"] for c in cases[:count]]
+    print(f"Selected {count} cases: {', '.join(case_ids)}")
+
+    # Step 3: launch a demo run with the mock adapter.
+    body = json.dumps({
+        "adapter": "mock",
+        "adapter_config": {},
+        "case_ids": case_ids,
+        "repeat": 1,
+        "concurrency": 1,
+        "seed": 42,
+    }).encode()
+    req = urllib.request.Request(
+        f"{base}/api/runs", data=body, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read().decode())
+    except Exception as exc:
+        print(f"error: could not launch demo run: {exc}", file=sys.stderr)
+        return 1
+
+    run_id = result.get("run_id")
+    print(f"Launched demo run: {run_id}")
+
+    # Step 4: open the browser.
+    url = f"{base}/"
+    webbrowser.open(url)
+    print(f"Opened dashboard in browser: {url}")
+    print("\nThe demo run is executing. Watch live progress in the Progress page.")
+    print("Press Ctrl+C to stop the server.")
+
+    # Keep the process alive so the server thread keeps running.
+    try:
+        while True:
+            import time as _time
+            _time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+        _remove_pid()
+    return 0
 
 
 def _cmd_probe(args: argparse.Namespace) -> int:

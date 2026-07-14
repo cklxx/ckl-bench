@@ -24,7 +24,7 @@ const NAV_ITEMS: Array<{ id: AppPage; label: string; icon: React.ComponentType<{
 
 export function Sidebar({ active, onNavigate }: SidebarProps) {
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r bg-muted/40">
+    <aside className="flex w-56 shrink-0 flex-col bg-muted/30">
       <div className="flex h-12 items-center gap-2 px-4">
         <span className="text-sm font-bold tracking-tight">ckl-bench</span>
         <Badge variant="muted" className="text-[10px] uppercase">app</Badge>
