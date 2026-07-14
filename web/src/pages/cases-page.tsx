@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Pencil, Trash2, Save, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, X, ArrowLeft, Box } from "lucide-react";
 
 const EMPTY_CASE: Partial<CaseDetail> = {
   id: "",
@@ -22,6 +22,15 @@ function packFromSource(source: string): string {
   return m ? m[1] : "other";
 }
 
+// Human-readable pack descriptions.
+const PACK_DESC: Record<string, string> = {
+  chat: "API-only and chat cases covering reasoning, math, code, and long-tail knowledge.",
+  agent: "Agent cases with temporary workspaces and artifact checks.",
+  "doc-writing": "Documentation writing: API docs, READMEs, changelogs.",
+  "infra-code": "Infrastructure code: Docker, systemd, nginx, deploy scripts.",
+  "paper-reading": "Paper reading: abstract comprehension, method comparison, results.",
+};
+
 function difficultyColor(d: string | null): string {
   if (!d) return "text-muted-foreground";
   if (d === "hard" || d === "high") return "text-destructive";
@@ -29,23 +38,29 @@ function difficultyColor(d: string | null): string {
   return "text-success";
 }
 
+interface PackInfo {
+  name: string;
+  cases: CaseListItem[];
+  capabilities: string[];
+  difficulty: string | null;
+}
+
 export function CasesPage() {
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [config, setConfig] = useState<ConfigInfo | null>(null);
-  const [pack, setPack] = useState<string>("");
-  const [expandedPack, setExpandedPack] = useState<string>("");
+  const [selectedPack, setSelectedPack] = useState<string | null>(null);
   const [editing, setEditing] = useState<Partial<CaseDetail> | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [error, setError] = useState<string>("");
 
   const refresh = () => {
-    listCases(pack || undefined).then(setCases).catch((e) => setError(String(e)));
+    listCases().then(setCases).catch((e) => setError(String(e)));
   };
 
   useEffect(() => {
     refresh();
     getConfig().then(setConfig).catch(() => {});
-  }, [pack]);
+  }, []);
 
   const beginNew = () => {
     setEditing({ ...EMPTY_CASE });
@@ -92,28 +107,41 @@ export function CasesPage() {
   };
 
   // Group cases by pack.
-  const packs = config?.case_packs || [];
-  const grouped = new Map<string, CaseListItem[]>();
+  const packMap = new Map<string, CaseListItem[]>();
   for (const c of cases) {
     const p = packFromSource(c.source);
-    if (!grouped.has(p)) grouped.set(p, []);
-    grouped.get(p)!.push(c);
+    if (!packMap.has(p)) packMap.set(p, []);
+    packMap.get(p)!.push(c);
   }
+
+  const packs: PackInfo[] = Array.from(packMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, packCases]) => {
+      const capSet = new Set<string>();
+      let difficulty: string | null = null;
+      for (const c of packCases) {
+        c.capability.forEach((cap) => capSet.add(cap));
+        if (c.difficulty) difficulty = c.difficulty;
+      }
+      return { name, cases: packCases, capabilities: Array.from(capSet), difficulty };
+    });
+
+  const currentPack = selectedPack ? packs.find((p) => p.name === selectedPack) : null;
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <select
-            value={pack}
-            onChange={(e) => setPack(e.target.value)}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm"
-          >
-            <option value="">All packs</option>
-            {packs.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </select>
+        <div>
+          {selectedPack ? (
+            <button
+              onClick={() => setSelectedPack(null)}
+              className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" /> All Packs
+            </button>
+          ) : (
+            <h1 className="text-xl font-semibold tracking-tight">Bench Collections</h1>
+          )}
         </div>
         <Button onClick={beginNew} size="sm">
           <Plus className="h-4 w-4" /> New Case
@@ -136,58 +164,90 @@ export function CasesPage() {
         />
       )}
 
-      {/* Pack cards */}
-      <div className="space-y-4">
-        {Array.from(grouped.entries()).map(([packName, packCases]) => {
-          const isExpanded = expandedPack === packName;
-          return (
-            <Card key={packName} className="overflow-hidden">
-              <button
-                onClick={() => setExpandedPack(isExpanded ? "" : packName)}
-                className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/50"
-              >
-                <div className="flex items-center gap-2">
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                  )}
-                  <span className="text-base font-semibold capitalize">{packName}</span>
-                  <Badge variant="secondary" className="text-xs">
-                    {packCases.length}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  {packCases.slice(0, 4).map((c) =>
-                    c.capability.slice(0, 2).map((cap) => (
-                      <Badge key={cap} variant="outline" className="text-[10px]">{cap}</Badge>
-                    ))
-                  )}
-                </div>
-              </button>
-              {isExpanded && (
-                <CardContent className="border-t border-border/50 bg-muted/20 p-4">
-                  <div className="grid gap-3">
-                    {packCases.map((c) => (
-                      <CaseCard
-                        key={c.id}
-                        caseItem={c}
-                        onEdit={() => beginEdit(c.id)}
-                        onDelete={() => remove(c.id)}
-                      />
-                    ))}
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          );
-        })}
-      </div>
+      {/* Pack cover cards gallery */}
+      {!selectedPack && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {packs.map((pack) => (
+            <PackCard
+              key={pack.name}
+              pack={pack}
+              onClick={() => setSelectedPack(pack.name)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Pack detail: case cards */}
+      {selectedPack && currentPack && (
+        <div className="space-y-4">
+          <div className="flex items-end justify-between">
+            <div>
+              <h2 className="text-2xl font-bold capitalize tracking-tight">{currentPack.name}</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {PACK_DESC[currentPack.name] || `${currentPack.cases.length} cases`}
+              </p>
+            </div>
+            <Badge variant="secondary">
+              {currentPack.cases.length} case{currentPack.cases.length !== 1 ? "s" : ""}
+            </Badge>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {currentPack.cases.map((c) => (
+              <CaseCard
+                key={c.id}
+                caseItem={c}
+                onEdit={() => beginEdit(c.id)}
+                onDelete={() => remove(c.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {cases.length === 0 && (
         <p className="text-center text-sm text-muted-foreground">No cases found.</p>
       )}
     </div>
+  );
+}
+
+/**
+ * Pack cover card — the "封面卡牌" of a bench collection.
+ * Shows pack name, description, case count, and capability tags.
+ * Reusable for showing pass counts later (see ProgressPage).
+ */
+function PackCard({ pack, onClick }: { pack: PackInfo; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group relative overflow-hidden rounded-xl bg-card p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+    >
+      {/* Accent gradient bar at top */}
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary/60 to-primary/20" />
+
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Box className="h-5 w-5" />
+        </div>
+        <Badge variant="secondary" className="text-xs">
+          {pack.cases.length}
+        </Badge>
+      </div>
+
+      <h3 className="mb-1 text-lg font-bold capitalize tracking-tight">{pack.name}</h3>
+      <p className="mb-3 line-clamp-2 text-xs text-muted-foreground">
+        {PACK_DESC[pack.name] || `${pack.cases.length} cases`}
+      </p>
+
+      <div className="flex flex-wrap gap-1">
+        {pack.capabilities.slice(0, 4).map((cap) => (
+          <Badge key={cap} variant="outline" className="text-[10px]">{cap}</Badge>
+        ))}
+        {pack.capabilities.length > 4 && (
+          <Badge variant="outline" className="text-[10px]">+{pack.capabilities.length - 4}</Badge>
+        )}
+      </div>
+    </button>
   );
 }
 
@@ -201,7 +261,7 @@ function CaseCard({
   onDelete: () => void;
 }) {
   return (
-    <div className="group rounded-lg bg-background p-4 shadow-sm transition-shadow hover:shadow-md">
+    <div className="group relative rounded-xl bg-card p-4 shadow-sm transition-shadow hover:shadow-md">
       <div className="mb-2 flex items-start justify-between gap-2">
         <h4 className="text-sm font-medium leading-snug">{caseItem.title}</h4>
         <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
