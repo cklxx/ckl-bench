@@ -1,7 +1,7 @@
 runs/
 .tmp-runs/
 .tmp-verify/
-.evalbench_cache/
+.ckl_bench_cache/
 .env
 .env.*
 !.env.example
@@ -15,3 +15,8 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# Web frontend
+web/node_modules/
+web/dist/
+# Note: ckl_bench/web/index.html is committed (pre-built template)

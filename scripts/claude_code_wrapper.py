@@ -11,10 +11,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
-KEY_ENVS = ("EVB_CLAUDE_API_KEY", "ANTHROPIC_API_KEY", "DSV4_API_KEY", "DEEPSEEK_API_KEY")
-BASE_URL_ENVS = ("EVB_CLAUDE_ANTHROPIC_BASE_URL", "ANTHROPIC_BASE_URL", "DSV4_ANTHROPIC_BASE_URL")
-MODEL_ENVS = ("EVB_CLAUDE_MODEL", "ANTHROPIC_MODEL", "DSV4_MODEL")
+KEY_ENVS = ("CKL_CLAUDE_API_KEY", "ANTHROPIC_API_KEY", "DSV4_API_KEY", "DEEPSEEK_API_KEY")
+BASE_URL_ENVS = ("CKL_CLAUDE_ANTHROPIC_BASE_URL", "ANTHROPIC_BASE_URL", "DSV4_ANTHROPIC_BASE_URL")
+MODEL_ENVS = ("CKL_CLAUDE_MODEL", "ANTHROPIC_MODEL", "DSV4_MODEL")
 
 
 def main() -> int:
@@ -30,7 +29,7 @@ def main() -> int:
         return 2
 
     command = _claude_command(env, inspect_workspace, _prompt(payload, inspect_workspace))
-    timeout_s = int(float(payload.get("timeout_s") or os.environ.get("EVB_CLAUDE_TIMEOUT_S") or 300))
+    timeout_s = int(float(payload.get("timeout_s") or os.environ.get("CKL_CLAUDE_TIMEOUT_S") or 300))
     completed = subprocess.run(
         command,
         cwd=inspect_workspace,
@@ -53,7 +52,7 @@ def main() -> int:
 
 
 def _prepare_inspect_workspace(case_id: str, source_workspace: Path | None) -> Path:
-    root = Path(os.environ.get("EVB_CLAUDE_WORKSPACE_DIR", ".tmp-runs/claude-code-workspaces"))
+    root = Path(os.environ.get("CKL_CLAUDE_WORKSPACE_DIR", ".tmp-runs/claude-code-workspaces"))
     target = root / _slug(case_id)
     if target.exists():
         shutil.rmtree(target)
@@ -97,30 +96,30 @@ def _claude_env() -> dict[str, str]:
 def _missing_env(env: dict[str, str]) -> str:
     if not env.get("ANTHROPIC_API_KEY"):
         return "missing one of: " + ", ".join(KEY_ENVS)
-    if not env.get("ANTHROPIC_BASE_URL") and env.get("EVB_CLAUDE_REQUIRE_BASE_URL", "1") != "0":
-        return "missing Anthropic-format base URL: set EVB_CLAUDE_ANTHROPIC_BASE_URL or ANTHROPIC_BASE_URL"
+    if not env.get("ANTHROPIC_BASE_URL") and env.get("CKL_CLAUDE_REQUIRE_BASE_URL", "1") != "0":
+        return "missing Anthropic-format base URL: set CKL_CLAUDE_ANTHROPIC_BASE_URL or ANTHROPIC_BASE_URL"
     return ""
 
 
 def _claude_command(env: dict[str, str], workspace: Path, prompt: str) -> list[str]:
-    command = shlex.split(env.get("EVB_CLAUDE_COMMAND", "claude"))
+    command = shlex.split(env.get("CKL_CLAUDE_COMMAND", "claude"))
     command.extend(
         [
             "--bare",
             "--print",
             "--output-format",
-            env.get("EVB_CLAUDE_OUTPUT_FORMAT", "json"),
+            env.get("CKL_CLAUDE_OUTPUT_FORMAT", "json"),
             "--no-session-persistence",
             "--permission-mode",
-            env.get("EVB_CLAUDE_PERMISSION_MODE", "acceptEdits"),
+            env.get("CKL_CLAUDE_PERMISSION_MODE", "acceptEdits"),
             "--add-dir",
             str(workspace),
         ]
     )
-    model = env.get("EVB_CLAUDE_MODEL") or env.get("ANTHROPIC_MODEL")
+    model = env.get("CKL_CLAUDE_MODEL") or env.get("ANTHROPIC_MODEL")
     if model:
         command.extend(["--model", model])
-    tools = env.get("EVB_CLAUDE_ALLOWED_TOOLS")
+    tools = env.get("CKL_CLAUDE_ALLOWED_TOOLS")
     if tools:
         command.extend(["--allowedTools", tools])
     command.append(prompt)
@@ -130,7 +129,7 @@ def _claude_command(env: dict[str, str], workspace: Path, prompt: str) -> list[s
 def _prompt(payload: dict[str, Any], workspace: Path) -> str:
     prompt = str(payload.get("prompt") or "")
     return (
-        "You are being evaluated by evalbench as a command-line coding agent.\n"
+        "You are being evaluated by ckl-bench as a command-line coding agent.\n"
         f"Work only inside this workspace: {workspace}\n"
         "Edit files directly in that workspace. Do not touch files outside it.\n"
         "When the task is complete, give a concise final answer. If the task asks "

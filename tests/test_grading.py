@@ -4,8 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from evalbench.core.cases import EvalCase
-from evalbench.core.grading import grade_case
+from ckl_bench.core.cases import EvalCase
+from ckl_bench.core.grading import grade_case
 
 
 def make_case(expectations: list[dict], *, metadata: dict | None = None, input_payload: dict | None = None) -> EvalCase:

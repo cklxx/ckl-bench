@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from evalbench.core.compare import compare_runs, load_run
+from ckl_bench.core.compare import compare_runs, load_run
 
 
 def results(*pairs: tuple[str, bool, float]) -> list[dict]:

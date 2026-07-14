@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from evalbench.core.stats import (
+from ckl_bench.core.stats import (
     bootstrap_mean_ci,
     mean,
     pass_at_k,

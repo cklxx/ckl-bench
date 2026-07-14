@@ -7,6 +7,35 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
+- **React frontend**: reports, dashboards, probe results, and diffs are now
+  rendered by a React 19 + TypeScript single-page app (`web/`), built with Vite
+  and inlined into a self-contained HTML file via `vite-plugin-singlefile`. The
+  UI uses shadcn/ui (Radix UI primitives), Tailwind CSS, Recharts, and
+  lucide-react, with HSL design tokens and dark mode support. The Python side
+  injects data as `window.__CKL_BENCH_DATA__`; the pre-built template is
+  bundled at `ckl_bench/web/index.html` so the package works out of the box.
+- **Dashboard**: `ckl dashboard` scans `runs/`, aggregates all run summaries,
+  and writes an interactive HTML dashboard (`runs/dashboard.html`) with a run
+  overview table, a score-trend sparkline, a capability heatmap, and automatic
+  data analysis (strongest/weakest capabilities, improving/regressing trends,
+  cost summary). `--open` launches it in a browser.
+- **Three domain case packs** (12 new cases, all hard and checkable):
+  - `cases/doc-writing/doc_writing.jsonl`: API documentation, README from a
+    project tree, changelog from commits, user guide from a CLI spec. Each has
+    `not_contains` checks to prevent hallucination.
+  - `cases/infra-code/infra_code.jsonl`: multi-stage Dockerfile, hardened
+    systemd service, nginx reverse proxy with TLS/rate limiting, deployment
+    shell script.
+  - `cases/paper-reading/paper_reading.jsonl`: abstract comprehension, method
+    comparison, result interpretation with arithmetic, contribution/limitation
+    extraction.
+- **TUI coding CLI targets**: `codex` and `dsx` are now first-class runnable
+  targets (`ckl run codex agent`, `ckl run dsx agent`), each backed by a
+  wrapper script (`scripts/codex_wrapper.py`, `scripts/dsx_wrapper.py`) that
+  isolates workspaces, handles timeouts, and follows the JSON stdin/stdout
+  contract. Override the binary with `CKL_CODEX_COMMAND` / `CKL_DSX_COMMAND`.
+- **Case set aliases**: `doc-writing`, `infra-code`, `paper-reading` added to
+  `ckl list`, `ckl run`, `ckl validate`.
 - **Standard**: `docs/STANDARD.md` — a 13-dimension rubric for a top-tier eval
   repo, distilled from 12 leading frameworks, with a tracked scorecard.
 - **Statistics**: Wilson confidence intervals and bootstrap CIs on every score,
@@ -20,17 +49,17 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Concurrency**: `--concurrency N` runs cases in parallel with deterministic
   result ordering.
 - **Reliability**: shared HTTP layer with exponential backoff + jitter and
-  `Retry-After` handling on transient API errors (`EVB_MAX_RETRIES`, ...).
+  `Retry-After` handling on transient API errors (`CKL_MAX_RETRIES`, ...).
 - **Caching**: opt-in content-addressed response cache (`--cache`,
-  `EVB_CACHE_DIR`) for free, deterministic reruns of chat cases (`core/cache.py`).
+  `CKL_CACHE_DIR`) for free, deterministic reruns of chat cases (`core/cache.py`).
 - **Usage & cost**: per-case token usage captured from provider responses and
   dollar-cost estimates from an overridable price table (`core/usage.py`,
-  `EVB_PRICING_FILE`).
+  `CKL_PRICING_FILE`).
 - **Reproducibility**: every `summary.json` carries a manifest — git SHA, seed,
   model + params, dataset content hashes, schema version, and timestamps.
-- **Run comparison**: `evb diff RUN_A RUN_B` classifies cases as
+- **Run comparison**: `ckl diff RUN_A RUN_B` classifies cases as
   regressed/improved/unchanged/added/removed, with `--fail-on-regression`.
-- **CI gate**: `evb run --fail-under FRACTION`.
+- **CI gate**: `ckl run --fail-under FRACTION`.
 - **Interactive report**: filter by status, search, and expand any case to see
   the response, per-check detail, usage, and repeat metrics.
 - **Frontier-breaker pack** (`cases/chat/frontier_compute.jsonl`, 24 cases) plus a
@@ -78,7 +107,7 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `file_exists`, `file_contains`, `file_regex`, `python`, and LLM `judge`.
 - Model namespace registries (`registries/models/*.jsonl`) with `${ENV:-default}`
   expansion and secret redaction.
-- `evb` / `evalbench` CLI: `run`, `list`, `validate`, `smoke`, `probe`,
+- `ckl` (alias `evb`) / `ckl-bench` CLI: `run`, `list`, `validate`, `smoke`, `probe`,
   `namespaces`.
 - Terminal score bars plus a one-glance HTML scorecard and a probe readiness
   dashboard per run.

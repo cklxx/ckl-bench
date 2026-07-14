@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from evalbench.core.usage import (
+from ckl_bench.core.usage import (
     DEFAULT_PRICING,
     Usage,
     estimate_cost,

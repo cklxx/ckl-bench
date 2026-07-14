@@ -22,7 +22,7 @@ Recommended fields:
 - `metadata.release_date`: When the case was authored (e.g. `2026-06`). Enables
   contamination/cutoff reasoning across model knowledge cutoffs.
 - `metadata.source_url`: Spec/doc URL when the correct answer is spec-defined.
-- `metadata.smoke`: `true` to include the case in `evb smoke`.
+- `metadata.smoke`: `true` to include the case in `ckl smoke`.
 
 ## Chat Case
 
@@ -173,8 +173,8 @@ string or JSON value:
 Run with:
 
 ```bash
-uv run evb run deepseekv4 chat --judge deepseekv4
-EVB_JUDGE=deepseekv4 uv run evb run deepseekv4 chat
+uv run ckl run deepseekv4 chat --judge deepseekv4
+CKL_JUDGE=deepseekv4 uv run ckl run deepseekv4 chat
 ```
 
 The judge is prompted to return:

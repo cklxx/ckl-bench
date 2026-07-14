@@ -552,8 +552,8 @@ def selfcheck() -> None:
     # every built case: the recorded answer must satisfy its own expectations
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from evalbench.core.cases import EvalCase
-    from evalbench.core.grading import grade_case
+    from ckl_bench.core.cases import EvalCase
+    from ckl_bench.core.grading import grade_case
 
     for c in build_cases(2):
         ev = EvalCase(

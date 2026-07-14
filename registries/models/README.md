@@ -5,10 +5,10 @@ is the stable top-level id users run, such as `deepseekv4`. Each line is one
 target, so adding a new endpoint is append-only.
 
 ```bash
-uv run evb namespaces
-uv run evb namespaces deepseekv4
-uv run evb run deepseekv4 chat
-uv run evb probe deepseekv4
+uv run ckl namespaces
+uv run ckl namespaces deepseekv4
+uv run ckl run deepseekv4 chat
+uv run ckl probe deepseekv4
 ```
 
 Minimal line:

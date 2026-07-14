@@ -1,14 +1,14 @@
 # Contributing
 
-evalbench is a small, dependency-light evaluation runner. Contributions that
+ckl-bench is a small, dependency-light evaluation runner. Contributions that
 keep it fast, portable, and evidence-oriented are very welcome.
 
 ## Non-negotiable design constraints
 
-1. **Stdlib-only core.** Everything under `evalbench/core/` and the built-in
+1. **Stdlib-only core.** Everything under `ckl-bench/core/` and the built-in
    adapters must run on a clean CPython (>=3.10) with no third-party packages.
    Optional power features may use extras, but a fresh clone must always pass
-   `python -m evalbench smoke` with zero installs.
+   `python -m ckl_bench smoke` with zero installs.
 2. **Fast first run.** No required database, service, or network for the smoke
    path. Missing credentials are reported as `skip`, never `fail`.
 3. **Evidence first.** Every run writes per-case checks, raw signal, and a
@@ -20,12 +20,12 @@ keep it fast, portable, and evidence-oriented are very welcome.
 
 ```bash
 # No install needed for the stdlib core.
-python -m evalbench validate           # validate every case file
+python -m ckl_bench validate           # validate every case file
 python -m unittest discover -s tests   # run the unit tests
-python -m evalbench smoke              # mock chat + command-agent smoke
+python -m ckl_bench smoke              # mock chat + command-agent smoke
 ```
 
-`uv run evb ...` and `uv run evalbench ...` work after cloning.
+`uv run ckl ...` and `uv run ckl-bench ...` work after cloning.
 
 ## Adding a case
 
@@ -37,17 +37,17 @@ Cases are newline-delimited JSON under `cases/`. See
 - Deterministic, checkable expectations. Prefer `json_path`, `file_*`, or a
   code-execution grader over loose `contains` when the answer is verifiable.
 - Record a `metadata.source_url` when the correct answer is spec-defined.
-- Run `python -m evalbench validate` before sending.
+- Run `python -m ckl_bench validate` before sending.
 
 ## Adding an adapter
 
-Implement the `ModelAdapter` protocol (`evalbench/adapters/base.py`):
+Implement the `ModelAdapter` protocol (`ckl-bench/adapters/base.py`):
 
 ```python
 def generate(self, request: GenerateRequest) -> GenerateResponse: ...
 ```
 
-Register built-ins in `evalbench/adapters/registry.py`, or load a custom one
+Register built-ins in `ckl-bench/adapters/registry.py`, or load a custom one
 with `--adapter module.path:ClassName`. See [docs/ADAPTERS.md](docs/ADAPTERS.md).
 
 ## Tests
@@ -60,4 +60,4 @@ CI runs `validate`, the unit tests, and `smoke` on Python 3.10–3.13.
 - Keep diffs focused; one capability per PR.
 - Update the relevant doc under `docs/` and the `CHANGELOG.md` Unreleased
   section.
-- Ensure `python -m evalbench smoke` and the unit tests pass.
+- Ensure `python -m ckl_bench smoke` and the unit tests pass.

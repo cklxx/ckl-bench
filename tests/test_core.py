@@ -8,9 +8,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from evalbench.adapters.mock import MockAdapter
-from evalbench.core.cases import EvalCase, load_cases
-from evalbench.core.runner import RunOptions, run_cases
+from ckl_bench.adapters.mock import MockAdapter
+from ckl_bench.core.cases import EvalCase, load_cases
+from ckl_bench.core.runner import RunOptions, run_cases
 
 
 class EvalBenchCoreTests(unittest.TestCase):
@@ -104,10 +104,10 @@ class EvalBenchCoreTests(unittest.TestCase):
             env = os.environ.copy()
             env.update(
                 {
-                    "EVB_CLAUDE_COMMAND": f"{sys.executable} {fake_claude}",
-                    "EVB_CLAUDE_API_KEY": "test-key",
-                    "EVB_CLAUDE_ANTHROPIC_BASE_URL": "https://example.test/anthropic",
-                    "EVB_CLAUDE_WORKSPACE_DIR": str(root / "inspect"),
+                    "CKL_CLAUDE_COMMAND": f"{sys.executable} {fake_claude}",
+                    "CKL_CLAUDE_API_KEY": "test-key",
+                    "CKL_CLAUDE_ANTHROPIC_BASE_URL": "https://example.test/anthropic",
+                    "CKL_CLAUDE_WORKSPACE_DIR": str(root / "inspect"),
                 }
             )
             completed = subprocess.run(

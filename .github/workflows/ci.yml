@@ -24,13 +24,13 @@ jobs:
 
       # The core runner is stdlib-only: no install step is required to test it.
       - name: Validate all cases
-        run: python -m evalbench validate
+        run: python -m ckl_bench validate
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 
       - name: Smoke (mock chat + command agent, no API keys)
-        run: python -m evalbench smoke
+        run: python -m ckl_bench smoke
 
   package:
     name: build sdist/wheel
@@ -47,5 +47,5 @@ jobs:
       - name: Check entry points import
         run: |
           python -m pip install dist/*.whl
-          evb --help >/dev/null
-          evalbench --help >/dev/null
+          ckl --help >/dev/null
+          ckl-bench --help >/dev/null

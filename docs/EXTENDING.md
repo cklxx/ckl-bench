@@ -1,6 +1,6 @@
-# Extending evalbench
+# Extending ckl-bench
 
-evalbench is built around two small extension points: **adapters** (where a model
+ckl-bench is built around two small extension points: **adapters** (where a model
 or agent plugs in) and **graders** (how an output becomes a score). Both stay
 dependency-light and are designed for drop-in extension.
 
@@ -9,7 +9,7 @@ dependency-light and are designed for drop-in extension.
 An adapter is any class with a `name` attribute and a `generate` method:
 
 ```python
-from evalbench.adapters.base import GenerateRequest, GenerateResponse
+from ckl-bench.adapters.base import GenerateRequest, GenerateResponse
 
 class MyAdapter:
     name = "my-adapter"
@@ -34,14 +34,14 @@ class MyAdapter:
 Load it without touching the repo:
 
 ```bash
-uv run evb run --adapter mypkg.adapters:MyAdapter --config my_config.json chat
+uv run ckl run --adapter mypkg.adapters:MyAdapter --config my_config.json chat
 ```
 
 The `model`, `temperature`, and `max_tokens` attributes (when present) flow into
 the run manifest and the cache key automatically.
 
 To register a built-in shorthand instead, add it to the `BUILT_INS` map in
-`evalbench/adapters/registry.py`.
+`ckl-bench/adapters/registry.py`.
 
 ## Custom graders
 
@@ -58,7 +58,7 @@ returns a bool or `{"passed": true, "score": 1.0, "detail": "why"}`.
 
 ### Adding a new built-in expectation kind
 
-Built-in graders live in `evalbench/core/grading.py`. The registry is the
+Built-in graders live in `ckl-bench/core/grading.py`. The registry is the
 `_evaluate` dispatcher: each `kind` is one branch returning an `_EvalOutcome`
 (`passed`, `score_fraction` in `[0, 1]`, `detail`). To add one:
 

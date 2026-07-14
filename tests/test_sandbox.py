@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from evalbench.core.sandbox import run_python_script
+from ckl_bench.core.sandbox import run_python_script
 
 
 class SandboxTests(unittest.TestCase):
@@ -48,13 +48,13 @@ class SandboxTests(unittest.TestCase):
     def test_credentials_are_scrubbed(self) -> None:
         import os
 
-        os.environ["EVB_SECRET_PROBE"] = "should-not-leak"
+        os.environ["CKL_SECRET_PROBE"] = "should-not-leak"
         try:
             result = run_python_script(
-                "import os; print(os.environ.get('EVB_SECRET_PROBE', 'absent'))"
+                "import os; print(os.environ.get('CKL_SECRET_PROBE', 'absent'))"
             )
         finally:
-            os.environ.pop("EVB_SECRET_PROBE", None)
+            os.environ.pop("CKL_SECRET_PROBE", None)
         self.assertIn("absent", result.stdout)
 
     def test_no_pycache_left_in_workspace(self) -> None:

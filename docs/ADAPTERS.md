@@ -5,21 +5,21 @@ ships with mainstream API adapters, a universal command adapter, and custom
 Python adapter loading.
 
 All built-in HTTP adapters (OpenAI-compatible, Anthropic, Gemini, HTTP-JSON)
-share one helper (`evalbench/adapters/_http.py`) that retries transient failures
+share one helper (`ckl-bench/adapters/_http.py`) that retries transient failures
 (429 / 5xx / timeouts) with exponential backoff and jitter, honoring
 `Retry-After`. They also report token usage in `GenerateResponse.metadata`
 (`{"usage": {"input_tokens", "output_tokens", "total_tokens"}}`), which the
 runner sums into `summary.json` and converts to dollar cost. A custom adapter
 that sets the same `metadata["usage"]` shape gets usage/cost tracking for free.
-See [docs/ENV.md](ENV.md) for `EVB_MAX_RETRIES` and pricing overrides.
+See [docs/ENV.md](ENV.md) for `CKL_MAX_RETRIES` and pricing overrides.
 
 ## Mock
 
 Useful for smoke tests and case authoring:
 
 ```bash
-uv run evb run chat
-uv run evb run mock chat --config configs/mock.responses.json
+uv run ckl run chat
+uv run ckl run mock chat --config configs/mock.responses.json
 ```
 
 Config:
@@ -40,7 +40,7 @@ Works with OpenAI and compatible `/chat/completions` providers:
 
 ```bash
 # OPENAI_API_KEY can live in .env.
-uv run evb run openai:gpt-4.1-mini chat
+uv run ckl run openai:gpt-4.1-mini chat
 ```
 
 Config keys:
@@ -48,7 +48,7 @@ Config keys:
 - `base_url`: Defaults to `OPENAI_BASE_URL`, then `https://api.openai.com/v1`.
 - `api_key`: Optional direct key. Prefer environment variables.
 - `api_key_env`: Custom environment variable name.
-- `model`: Required unless `EVAL_MODEL` is set.
+- `model`: Required unless `CKL_MODEL` is set.
 - `temperature`: Defaults to `0`.
 - `max_tokens`: Optional.
 - `extra_body`: Extra JSON fields sent to the API.
@@ -57,20 +57,20 @@ OpenRouter and local OpenAI-compatible servers use the same adapter:
 
 ```bash
 export OPENROUTER_API_KEY=...
-uv run evb run openrouter:openai/gpt-4.1-mini chat
+uv run ckl run openrouter:openai/gpt-4.1-mini chat
 
-export EVAL_LOCAL_BASE_URL=http://127.0.0.1:8000/v1
-export EVAL_LOCAL_MODEL=local-model
-uv run evb run local chat
+export CKL_LOCAL_BASE_URL=http://127.0.0.1:8000/v1
+export CKL_LOCAL_MODEL=local-model
+uv run ckl run local chat
 ```
 
 Named model namespaces can be registered as plain JSONL under `registries/models/`:
 
 ```bash
-uv run evb namespaces
-uv run evb namespaces deepseekv4
-uv run evb run deepseekv4 chat
-uv run evb probe deepseekv4
+uv run ckl namespaces
+uv run ckl namespaces deepseekv4
+uv run ckl run deepseekv4 chat
+uv run ckl probe deepseekv4
 ```
 
 The DSv4 registration defaults to public DeepSeek API settings from the official
@@ -83,7 +83,7 @@ OpenAI-compatible HTTP endpoint, not the tn SSH port.
 
 ```bash
 export ANTHROPIC_API_KEY=...
-uv run evb run anthropic:claude-3-5-haiku-latest chat
+uv run ckl run anthropic:claude-3-5-haiku-latest chat
 ```
 
 Config keys:
@@ -99,7 +99,7 @@ Config keys:
 
 ```bash
 export GEMINI_API_KEY=...
-uv run evb run gemini:gemini-3.5-flash chat
+uv run ckl run gemini:gemini-3.5-flash chat
 ```
 
 Config keys:
@@ -115,7 +115,7 @@ Config keys:
 For APIs that are not exactly OpenAI-compatible:
 
 ```bash
-uv run evb run http-json chat --config configs/http-json.example.json
+uv run ckl run http-json chat --config configs/http-json.example.json
 ```
 
 The adapter posts:
@@ -138,9 +138,9 @@ Use `text_path` to select the response text from returned JSON, for example
 This is the universal bridge for agent frameworks.
 
 ```bash
-uv run evb run command agent
-uv run evb run command agent --command "python scripts/command_agent_example.py"
-uv run evb run claude-code agent
+uv run ckl run command agent
+uv run ckl run command agent --command "python scripts/command_agent_example.py"
+uv run ckl run claude-code agent
 ```
 
 The command receives stdin:
@@ -150,7 +150,7 @@ The command receives stdin:
   "case_id": "agent.fix_binary_search_off_by_one.v1",
   "messages": [{"role": "user", "content": "..."}],
   "prompt": "...",
-  "workspace_path": "/tmp/evalbench-agent.fix_binary_search_off_by_one.v1-...",
+  "workspace_path": "/tmp/ckl-bench-agent.fix_binary_search_off_by_one.v1-...",
   "metadata": {},
   "timeout_s": 30
 }
@@ -168,31 +168,31 @@ framework, edits `workspace_path` when needed, and prints the final answer.
 For real agent CLIs, keep the wrapper explicit:
 
 ```bash
-export EVAL_AGENT_COMMAND="python path/to/your_agent_wrapper.py"
-uv run evb probe agent
+export CKL_AGENT_COMMAND="python path/to/your_agent_wrapper.py"
+uv run ckl probe agent
 ```
 
-`probe` also recognizes `EVAL_CODEX_COMMAND`, `EVAL_CLAUDE_COMMAND`, and
-`EVAL_GEMINI_COMMAND` when you maintain separate wrappers.
+`probe` also recognizes `CKL_CODEX_COMMAND`, `CKL_CLAUDE_COMMAND`, and
+`CKL_GEMINI_COMMAND` when you maintain separate wrappers.
 
 ### Claude Code Wrapper
 
 `claude-code` uses `scripts/claude_code_wrapper.py`. The wrapper reads the
-evalbench JSON payload, copies the ephemeral workspace into a stable inspect
+ckl-bench JSON payload, copies the ephemeral workspace into a stable inspect
 directory, runs Claude Code there, then syncs files back for grading.
 
 ```bash
-uv run evb run claude-code agent
-uv run evb probe agent
+uv run ckl run claude-code agent
+uv run ckl probe agent
 ```
 
 Relevant env:
 
 ```bash
-EVAL_CLAUDE_COMMAND=python scripts/claude_code_wrapper.py
-EVB_CLAUDE_COMMAND=claude
-EVB_CLAUDE_MODEL=deepseek-v4-flash
-EVB_CLAUDE_WORKSPACE_DIR=.tmp-runs/claude-code-workspaces
+CKL_CLAUDE_COMMAND=python scripts/claude_code_wrapper.py
+CKL_CLAUDE_COMMAND=claude
+CKL_CLAUDE_MODEL=deepseek-v4-flash
+CKL_CLAUDE_WORKSPACE_DIR=.tmp-runs/claude-code-workspaces
 DSV4_ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic
 ```
 
@@ -206,9 +206,9 @@ Cases can use `{"kind":"judge"}` expectations for semantic grading. The judge
 uses the same target syntax as normal runs:
 
 ```bash
-uv run evb run deepseekv4 chat --judge deepseekv4
-EVB_JUDGE=deepseekv4 uv run evb run deepseekv4 chat
-uv run evb run deepseekv4 chat --judge openai:gpt-4.1-mini
+uv run ckl run deepseekv4 chat --judge deepseekv4
+CKL_JUDGE=deepseekv4 uv run ckl run deepseekv4 chat
+uv run ckl run deepseekv4 chat --judge openai:gpt-4.1-mini
 ```
 
 Use `--judge same` to reuse the tested adapter as the judge. API keys still live
@@ -219,7 +219,7 @@ in `.env` or shell env.
 Pass `module.path:ClassName` as `--adapter`.
 
 ```bash
-uv run evb run --adapter mypkg.adapters:MyAdapter --config my_config.json
+uv run ckl run --adapter mypkg.adapters:MyAdapter --config my_config.json
 ```
 
 The class is initialized with the config dictionary and must implement:

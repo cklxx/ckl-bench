@@ -3,14 +3,14 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "personal-evalbench"
+name = "ckl-bench"
 version = "0.1.0"
-description = "Dependency-light private evaluation runner for LLM and agent cases."
+description = "ckl's personal benchmark for doc writing, infra code, and paper reading — one-click evaluation of the latest models via TUI coding CLIs."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "cklxx" }]
-keywords = ["llm", "evaluation", "benchmark", "agent", "eval", "pass-at-k"]
+authors = [{ name = "ckl" }]
+keywords = ["llm", "evaluation", "benchmark", "agent", "eval", "pass-at-k", "coding-cli"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -27,19 +27,27 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/cklxx/eval"
-Repository = "https://github.com/cklxx/eval"
+Homepage = "https://github.com/cklxx/ckl-bench"
+Repository = "https://github.com/cklxx/ckl-bench"
 
 [project.optional-dependencies]
-# Optional only -- a fresh clone must still pass `evb smoke` with zero installs.
+# Optional only -- a fresh clone must still pass `ckl smoke` with zero installs.
 dev = ["ruff>=0.5", "mypy>=1.8"]
+# Live dashboard server (WebSocket progress). Without it, the server falls
+# back to HTTP polling.
+serve = ["websockets>=12"]
 
 [project.scripts]
-evb = "evalbench.cli:main"
-evalbench = "evalbench.cli:main"
+ckl = "ckl_bench.cli:main"
+ckl-bench = "ckl_bench.cli:main"
+evb = "ckl_bench.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["evalbench*"]
+include = ["ckl_bench*"]
+
+[tool.setuptools.package-data]
+# Bundle the pre-built React frontend template.
+"ckl_bench.web" = ["index.html"]
 
 [tool.ruff]
 line-length = 110

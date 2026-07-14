@@ -1,6 +1,6 @@
 # The Top-Tier Eval Repository Standard
 
-This is the canonical standard evalbench measures itself against. It distills the
+This is the canonical standard ckl-bench measures itself against. It distills the
 twelve leading evaluation frameworks — lm-evaluation-harness, HELM, Inspect AI,
 OpenAI evals/simple-evals, lighteval, promptfoo, DeepEval, Ragas, SWE-bench,
 LiveCodeBench, Braintrust+LangSmith, and the agent-benchmark family
@@ -17,7 +17,7 @@ A non-negotiable constraint frames every "world-class" target:
 evidence-oriented.** Heavyweight exemplars (torch / Docker / HF-datasets) are
 inspiration for *behavior*, never for dependencies.
 
-The per-dimension "evalbench" notes are a **dated assessment snapshot**
+The per-dimension "ckl-bench" notes are a **dated assessment snapshot**
 (first taken 2026-06-04); the scorecard at the end tracks progress. "Latent"
 means a level reachable by wiring in code that already exists with no new deps.
 
@@ -287,7 +287,7 @@ drives toward. "Latent" marks a level reachable by wiring existing stdlib code
 | 12 | Adapter / provider abstraction | 3 | — | 3 | lm-eval-harness / promptfoo |
 | 13 | Repo hygiene, CI & extensibility | 2 | — | 3 | promptfoo / Inspect |
 
-**Headline.** evalbench is a world-class adapter layer (level 3) wrapped around an
+**Headline.** ckl-bench is a world-class adapter layer (level 3) wrapped around an
 under-powered runner. The defining surprise: the two dimensions that look hardest
 on paper — statistical rigor and execution grading — are already *built*
 (`stats.py`, `sandbox.py`, plus `cache.py`/`usage.py`) and merely *unwired*. The
@@ -311,17 +311,17 @@ post-build levels (see `CHANGELOG.md` for the changes):
 | 7 | Caching & cost decoupling | 0 → 2 | opt-in content-addressed cache; judge-cache/regrade still open |
 | 8 | Reproducibility & manifest | 1 → 2 | git SHA, seed, model+params, dataset hashes, schema version |
 | 9 | Usage & cost tracking | 1 → ~2.5 | tokens + dollar cost; `cost`/`latency` graders still open |
-| 10 | Reporting & run comparison | 1 → ~3 | interactive report + `evb diff` + CI gates |
+| 10 | Reporting & run comparison | 1 → ~3 | interactive report + `ckl diff` + CI gates |
 | 11 | Dataset & contamination hygiene | 1 → ~3 | per-case version + release_date; execution-graded packs; a regenerable, contamination-resistant frontier generator with recorded difficulty evidence |
 | 12 | Adapter / provider abstraction | 3 → 3 | unchanged (already world-class) |
 | 13 | Repo hygiene, CI & extensibility | 2 → ~3 | CI, LICENSE/CONTRIBUTING/CHANGELOG, EXTENDING docs, broad tests |
 
 Remaining stretch items (logprob-MCQ scoring, paired significance in `diff`,
-judge-call caching + `evb regrade`, a Docker sandbox tier, and `cost`/`latency`
+judge-call caching + `ckl regrade`, a Docker sandbox tier, and `cost`/`latency`
 graders) are tracked for follow-up. Re-take this scorecard after major changes.
 
 ## Critical path
 
 `usage plumbing → run manifest → stats wiring → repeats/pass@k → execution grader
-→ concurrency`, with cache, additional graders, `evb diff`, case packs, CI gate,
+→ concurrency`, with cache, additional graders, `ckl diff`, case packs, CI gate,
 and docs fanned out alongside.

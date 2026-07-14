@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from evalbench.core.cache import NullCache, ResponseCache, cache_key
+from ckl_bench.core.cache import NullCache, ResponseCache, cache_key
 
 
 class CacheTests(unittest.TestCase):

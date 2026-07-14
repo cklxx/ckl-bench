@@ -1,18 +1,25 @@
-# eval
+# ckl-bench
 
-Personal evaluation cases for model and agent capabilities that are not well
-covered by mainstream benchmarks.
+ckl's personal benchmark for **doc writing**, **infra code**, and **paper
+reading** — designed to one-click test the latest model capabilities via TUI
+coding CLIs (claude code, codex, dsx), with interactive visualization and
+automatic data analysis.
 
 The repository is intentionally small and dependency-light, yet built to a
 [top-tier eval standard](docs/STANDARD.md):
 
-- `uv run evb ...` works after cloning the repo — **stdlib-only core, zero
+- `uv run ckl ...` works after cloning the repo — **stdlib-only core, zero
   required installs**.
-- `uv run evalbench ...` and `python -m evalbench ...` remain compatible.
-- Cases are JSONL files under `cases/`.
+- `uv run ckl-bench ...` and `python -m ckl_bench ...` remain compatible.
+- Cases are JSONL files under `cases/` (chat, agent, doc-writing, infra-code,
+  paper-reading).
 - Results are JSONL, summary JSON, and an **interactive** `report.html` under
   `runs/` (filter, search, per-case drill-down).
+- `ckl dashboard` aggregates all runs into an interactive HTML dashboard with
+  score trends, a capability heatmap, and auto analysis.
 - Model APIs and agent frameworks plug in through adapters (urllib, no SDKs).
+- **TUI coding CLI agents**: run claude code, codex, and dsx as first-class
+  targets (`ckl run codex agent`, `ckl run dsx agent`).
 - **Statistics by default**: Wilson + bootstrap confidence intervals on every
   score, with `--repeat N` for unbiased `pass@k` and `pass^k` reliability.
 - **Execution-based grading**: grade agent/code output by *running* it in a
@@ -20,56 +27,78 @@ The repository is intentionally small and dependency-light, yet built to a
 - **Fast and cheap to iterate**: `--concurrency N` parallelism, retry/backoff on
   transient API errors, an opt-in `--cache`, and token + dollar cost tracking.
 - **Reproducible & comparable**: every run records a manifest (git SHA, seed,
-  model+params, dataset hash); `evb diff` flags regressions between runs.
+  model+params, dataset hash); `ckl diff` flags regressions between runs.
 - Optional judge-model grading is available for semantic checks.
 
 ## Quick Start
 
 ```bash
 cp .env.example .env
-uv run evb smoke
-uv run evb list
-uv run evb run chat
-uv run evb run command agent
-uv run evb probe
-uv run evb namespaces
+uv run ckl smoke
+uv run ckl list
+uv run ckl run chat
+uv run ckl run command agent
+uv run ckl probe
+uv run ckl namespaces
+uv run ckl dashboard
+uv run ckl serve            # interactive dashboard (live progress, case editor, run launcher)
+```
+
+Run the three domain benchmarks:
+
+```bash
+uv run ckl run doc-writing
+uv run ckl run infra-code
+uv run ckl run paper-reading
 ```
 
 Run a mainstream API:
 
 ```bash
 # Put API keys in .env, or export them in your shell.
-uv run evb run openai:gpt-4.1-mini chat
+uv run ckl run openai:gpt-4.1-mini chat
 
 export ANTHROPIC_API_KEY=...
-uv run evb run anthropic:claude-3-5-haiku-latest chat
+uv run ckl run anthropic:claude-3-5-haiku-latest chat
 
 export GEMINI_API_KEY=...
-uv run evb run gemini:gemini-3.5-flash chat
+uv run ckl run gemini:gemini-3.5-flash chat
 
 export OPENROUTER_API_KEY=...
-uv run evb run openrouter:openai/gpt-4.1-mini chat
+uv run ckl run openrouter:openai/gpt-4.1-mini chat
 
-uv run evb run deepseekv4 chat
-uv run evb run deepseekv4 chat --judge deepseekv4
+uv run ckl run deepseekv4 chat
+uv run ckl run deepseekv4 chat --judge deepseekv4
 ```
+
+Run TUI coding CLI agents (claude code, codex, dsx):
+
+```bash
+uv run ckl run claude-code agent
+uv run ckl run codex agent
+uv run ckl run dsx agent
+```
+
+Each agent target runs through a wrapper script (`scripts/claude_code_wrapper.py`,
+`scripts/codex_wrapper.py`, `scripts/dsx_wrapper.py`) that isolates workspaces and
+follows the JSON stdin/stdout contract. Override the binary with
+`CKL_CLAUDE_COMMAND`, `CKL_CODEX_COMMAND`, or `CKL_DSX_COMMAND`.
 
 Run at scale with statistics, parallelism, caching, and a CI gate:
 
 ```bash
 # Repeat each case 5x for pass@k / pass^k, 8 in parallel, cache responses.
-uv run evb run openai:gpt-4.1-mini chat --repeat 5 --concurrency 8 --cache
+uv run ckl run openai:gpt-4.1-mini chat --repeat 5 --concurrency 8 --cache
 
 # Gate CI on score, and compare two runs to catch regressions.
-uv run evb run deepseekv4 chat --run-name baseline --fail-under 0.6
-uv run evb diff runs/baseline runs/candidate --fail-on-regression
+uv run ckl run deepseekv4 chat --run-name baseline --fail-under 0.6
+uv run ckl diff runs/baseline runs/candidate --fail-on-regression
 ```
 
 Use any local agent framework by wrapping it as a command:
 
 ```bash
-uv run evb run command agent --command "python path/to/your_agent_wrapper.py"
-uv run evb run claude-code agent
+uv run ckl run command agent --command "python path/to/your_agent_wrapper.py"
 ```
 
 The command receives one JSON object on stdin and should print either plain text
@@ -90,9 +119,86 @@ Capability
 - private-longtail       [##################] 100.0%  2/2
 ```
 
-`uv run evb probe` gives a compact readiness table for OpenAI,
+`uv run ckl probe` gives a compact readiness table for OpenAI,
 Anthropic, Gemini, OpenRouter, local OpenAI-compatible servers, and command
-agent bridges. Missing keys or wrappers are marked `skip`, not `fail`.
+agent bridges (including codex and dsx wrappers). Missing keys or wrappers are
+marked `skip`, not `fail`.
+
+## Dashboard
+
+`uv run ckl dashboard` scans the `runs/` directory, aggregates every run
+summary, and writes `runs/dashboard.html` — an interactive overview with:
+
+- **Run table**: every run's score, pass rate, adapter, model, tokens, cost.
+- **Score trend**: a line chart across all runs (Recharts).
+- **Capability heatmap**: per-capability scores across runs (green/yellow/red).
+- **Auto analysis**: strongest and weakest capabilities (latest run), improving
+  and regressing trends (last two runs).
+
+```bash
+uv run ckl dashboard                  # generate runs/dashboard.html
+uv run ckl dashboard --open           # open in browser
+uv run ckl dashboard --runs runs      # custom runs dir
+```
+
+## Interactive Dashboard
+
+`ckl serve` starts a local server with a live, interactive dashboard — browse
+and edit cases, launch evaluations, watch progress in real time, and see
+auto-classified results with analysis.
+
+```bash
+uv run ckl serve                    # start server (http://127.0.0.1:8765)
+uv run ckl serve --port 9000        # custom port
+uv run ckl serve --host 0.0.0.0     # listen on all interfaces
+uv run ckl serve --open             # open browser after start
+uv run ckl serve stop               # stop a background server
+uv run ckl serve status             # check if server is running
+```
+
+The dashboard has four pages:
+
+- **Cases** — browse all cases by pack, create/edit/delete cases (full CRUD,
+  persisted to `cases/` JSONL).
+- **Launch** — select an adapter/provider, pick cases, set options (repeat,
+  concurrency, seed, judge), and launch a run.
+- **Progress** — live per-case progress via WebSocket, with a progress bar,
+  status badges, and scores. Falls back to polling when `websockets` is not
+  installed.
+- **Reports** — aggregated run table, score trend chart, capability heatmap,
+  and auto analysis (strongest/weakest capabilities, improving/regressing
+  trends).
+
+Install the optional `serve` extra for live WebSocket progress:
+
+```bash
+uv run --with ckl-bench[serve] ckl serve
+```
+
+Without it, the dashboard still works — the frontend polls the progress API
+every 2 seconds.
+
+## Web Frontend
+
+Reports, dashboards, probe results, diffs, and the interactive server app are
+rendered by a **React 19 + TypeScript** single-page app (`web/`), built with
+Vite and inlined into a self-contained HTML file via
+`vite-plugin-singlefile`. The Python side injects data as
+`window.__CKL_BENCH_DATA__`; the app reads it and renders the appropriate page.
+
+The UI uses **shadcn/ui** (Radix UI primitives), **Tailwind CSS**,
+**Recharts**, and **lucide-react**, with HSL design tokens and dark mode
+support.
+
+```bash
+cd web
+npm install
+npm run build:copy    # builds + copies dist/index.html into ckl_bench/web/
+npm run dev           # live dev server (data falls back to empty state)
+```
+
+The pre-built template is committed at `ckl_bench/web/index.html`, so the
+package works out of the box without building the frontend.
 
 ## Frontier-breaker cases
 
@@ -118,15 +224,20 @@ python scripts/frontier_cases.py --out cases/chat/frontier_compute.jsonl
 ## Repository Layout
 
 ```text
-evalbench/core/         Runner, grading, reporting, stats, sandbox, cache, usage, compare
-evalbench/adapters/     Model + agent adapters (urllib, no SDKs) and shared HTTP retry
+ckl_bench/core/         Runner, grading, reporting, stats, sandbox, cache, usage, compare
+ckl_bench/adapters/     Model + agent adapters (urllib, no SDKs) and shared HTTP retry
+ckl_bench/web/          Pre-built React frontend template (index.html) — bundled
 cases/chat/             Chat or API-only case packs
 cases/agent/            Agent cases with temporary workspaces and artifact checks
+cases/doc-writing/      Documentation writing cases (API docs, READMEs, changelogs)
+cases/infra-code/       Infrastructure code cases (Docker, systemd, nginx, deploy scripts)
+cases/paper-reading/    Paper reading cases (abstract comprehension, method comparison, results)
 configs/                Example adapter configs
 registries/models/      Plain JSONL model namespace configs
 docs/                   Standard, case schema, adapter, env, and probe docs
-scripts/                Example command adapter wrappers
+scripts/                Example command adapter wrappers (claude code, codex, dsx)
 tests/                  Stdlib unittest suite
+web/                    React 19 + TypeScript frontend (Vite, shadcn/ui, Tailwind, Recharts)
 .github/workflows/      CI: validate + tests + smoke + build on py3.10-3.13
 ```
 
@@ -146,7 +257,7 @@ tests/                  Stdlib unittest suite
 [docs/STANDARD.md](docs/STANDARD.md) is the canonical rubric: 13 dimensions
 distilled from the leading frameworks (lm-evaluation-harness, HELM, Inspect AI,
 OpenAI evals, lighteval, promptfoo, DeepEval, Ragas, SWE-bench, LiveCodeBench,
-Braintrust, and the agent-benchmark family), each scored 0–3, with evalbench's
+Braintrust, and the agent-benchmark family), each scored 0–3, with ckl-bench's
 level and the target tracked in the scorecard.
 
 See [docs/STANDARD.md](docs/STANDARD.md),

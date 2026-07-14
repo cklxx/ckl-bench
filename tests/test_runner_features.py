@@ -4,10 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from evalbench.adapters.base import GenerateResponse
-from evalbench.core.cache import ResponseCache
-from evalbench.core.cases import EvalCase
-from evalbench.core.runner import RunOptions, run_cases
+from ckl_bench.adapters.base import GenerateResponse
+from ckl_bench.core.cache import ResponseCache
+from ckl_bench.core.cases import EvalCase
+from ckl_bench.core.runner import RunOptions, run_cases
 
 
 class CountingAdapter:
@@ -91,11 +91,11 @@ class RunnerFeatureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pricing = Path(tmp) / "pricing.json"
             pricing.write_text('{"fake-model": {"input": 1000.0, "output": 1000.0}}', encoding="utf-8")
-            os.environ["EVB_PRICING_FILE"] = str(pricing)
+            os.environ["CKL_PRICING_FILE"] = str(pricing)
             try:
                 res = run_cases([chat_case()], CountingAdapter(), RunOptions(out_dir=Path(tmp), run_name="cost"))
             finally:
-                os.environ.pop("EVB_PRICING_FILE", None)
+                os.environ.pop("CKL_PRICING_FILE", None)
             # 15 tokens total at $1000/M each side -> > 0 cost recorded.
             self.assertGreater(res["summary"]["cost_usd"], 0.0)
 
