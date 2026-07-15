@@ -37,6 +37,7 @@ const translations: Record<Locale, Record<string, Trans>> = {
       cases: "Cases",
       capabilities: "Capabilities",
       ci: "95% CI: [{{low}}, {{high}}]",
+      copied: "Copied: {{value}}",
     },
     bench: {
       title: "Bench Collections",
@@ -252,6 +253,7 @@ const translations: Record<Locale, Record<string, Trans>> = {
       cases: "用例",
       capabilities: "能力",
       ci: "95% 置信区间: [{{low}}, {{high}}]",
+      copied: "已复制: {{value}}",
     },
     bench: {
       title: "评测集合",

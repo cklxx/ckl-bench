@@ -6,6 +6,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { Loader2 } from "lucide-react";
 import { formatPercent, formatNumber, scoreVariant } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
+import { useToast } from "@/components/ui/toast";
 
 interface RunDetailProps {
   runId: string | null;
@@ -14,6 +15,7 @@ interface RunDetailProps {
 
 export function RunDetail({ runId, onClose }: RunDetailProps) {
   const t = useT();
+  const { toast } = useToast();
   const [run, setRun] = useState<RunInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -31,6 +33,12 @@ export function RunDetail({ runId, onClose }: RunDetailProps) {
   const summary = run?.summary;
   const results: Result[] = (run as any)?.results || [];
   const adapter = summary?.adapter_display || summary?.adapter || "unknown";
+
+  const copyTag = (e: React.MouseEvent, value: string) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(value);
+    toast(t("common.copied", { value }));
+  };
 
   return (
     <Sheet open={!!runId} onClose={onClose} side="right" width="60%">
@@ -122,10 +130,7 @@ export function RunDetail({ runId, onClose }: RunDetailProps) {
                               key={c}
                               variant="outline"
                               className="text-[10px] cursor-pointer hover:bg-muted"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigator.clipboard.writeText(c);
-                              }}
+                              onClick={(e) => copyTag(e, c)}
                             >
                               {c}
                             </Badge>
