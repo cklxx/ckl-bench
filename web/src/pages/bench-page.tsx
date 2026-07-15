@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { SettingsDrawer } from "@/components/settings-drawer";
+import { CaseEditor } from "@/components/case-editor";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AnalysisCards } from "@/components/analysis-cards";
 import { TrendChart } from "@/components/trend-chart";
@@ -65,6 +66,7 @@ export function BenchPage() {
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [runs, setRuns] = useState<RunInfo[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState("");
   const socketRef = useRef<ProgressSocket | null>(null);
@@ -307,6 +309,7 @@ export function BenchPage() {
                 pack={pack}
                 runStates={packRunMap.get(pack.name) || []}
                 onRun={() => launchPack(pack.name)}
+                onEditCase={(id) => setEditingCaseId(id)}
               />
             ))}
           </div>
@@ -341,6 +344,11 @@ export function BenchPage() {
       </main>
 
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <CaseEditor
+        caseId={editingCaseId}
+        onClose={() => setEditingCaseId(null)}
+        onSaved={refresh}
+      />
     </div>
   );
 }
@@ -349,10 +357,12 @@ function BenchPackCard({
   pack,
   runStates,
   onRun,
+  onEditCase,
 }: {
   pack: PackInfo;
   runStates: PackRunState[];
   onRun: () => void;
+  onEditCase: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasRunning = runStates.some(
@@ -451,7 +461,8 @@ function BenchPackCard({
               {pack.cases.map((c) => (
                 <div
                   key={c.id}
-                  className="rounded px-2 py-1.5 text-xs hover:bg-muted/50"
+                  className="rounded px-2 py-1.5 text-xs hover:bg-muted/50 cursor-pointer"
+                  onClick={() => onEditCase(c.id)}
                 >
                   <div className="font-medium text-foreground">{c.title}</div>
                   <div className="text-[10px] text-muted-foreground">
