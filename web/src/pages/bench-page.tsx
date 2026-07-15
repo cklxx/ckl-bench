@@ -33,6 +33,8 @@ import { AnalysisCards } from "@/components/analysis-cards";
 import { TrendChart } from "@/components/trend-chart";
 import { Heatmap } from "@/components/heatmap";
 import { RunTable } from "@/components/run-table";
+import { ComparisonTable } from "@/components/comparison-table";
+import { FailureAnalysis } from "@/components/failure-analysis";
 import { PlayCircle, Settings as SettingsIcon, Box, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -250,6 +252,8 @@ export function BenchPage() {
     .map((r) => r.summary)
     .filter((s): s is NonNullable<typeof s> => s != null);
 
+  const allResults = runs.flatMap((r) => r.results ?? []);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-10 flex h-12 items-center justify-between border-b bg-background/80 px-4 backdrop-blur">
@@ -316,6 +320,16 @@ export function BenchPage() {
                 <TabsTrigger value="overview">{t("bench.overview")}</TabsTrigger>
                 <TabsTrigger value="heatmap">{t("bench.heatmap")}</TabsTrigger>
                 <TabsTrigger value="runs">{t("bench.allRuns")}</TabsTrigger>
+                {summaries.length >= 2 && (
+                  <>
+                    <TabsTrigger value="comparison">
+                      {t("comparison.title")}
+                    </TabsTrigger>
+                    <TabsTrigger value="failures">
+                      {t("failure.title")}
+                    </TabsTrigger>
+                  </>
+                )}
               </TabsList>
 
               <TabsContent value="overview">
@@ -353,6 +367,18 @@ export function BenchPage() {
                   </CardContent>
                 </Card>
               </TabsContent>
+
+              {summaries.length >= 2 && (
+                <>
+                  <TabsContent value="comparison">
+                    <ComparisonTable runs={summaries} />
+                  </TabsContent>
+
+                  <TabsContent value="failures">
+                    <FailureAnalysis runs={summaries} results={allResults} />
+                  </TabsContent>
+                </>
+              )}
             </Tabs>
           </section>
         )}

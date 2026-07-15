@@ -4,6 +4,8 @@ import { RunTable } from "@/components/run-table";
 import { TrendChart } from "@/components/trend-chart";
 import { Heatmap } from "@/components/heatmap";
 import { AnalysisCards } from "@/components/analysis-cards";
+import { ComparisonTable } from "@/components/comparison-table";
+import { FailureAnalysis } from "@/components/failure-analysis";
 import type { RunSummary } from "@/lib/types";
 import { useT } from "@/lib/i18n";
 
@@ -28,6 +30,14 @@ export function DashboardPage({ runs }: DashboardPageProps) {
 
       {/* Auto analysis */}
       {runs.length > 0 && <AnalysisCards runs={runs} />}
+
+      {/* Adapter comparison + failure analysis */}
+      {runs.length >= 2 && (
+        <>
+          <ComparisonTable runs={runs} />
+          <FailureAnalysis runs={runs} />
+        </>
+      )}
 
       {/* Trend chart */}
       {runs.length >= 2 && (

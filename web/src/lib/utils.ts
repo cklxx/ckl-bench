@@ -32,3 +32,34 @@ export function scoreVariant(
   if (score >= 0.5) return "warning";
   return "destructive";
 }
+
+/**
+ * Determine whether two 95% confidence intervals differ significantly.
+ * Returns null when either CI is missing (can't determine), true when the
+ * CIs don't overlap (significant at p < 0.05), false when they overlap.
+ */
+export function isSignificant(
+  ciA: [number, number] | undefined,
+  ciB: [number, number] | undefined
+): boolean | null {
+  if (!ciA || !ciB) return null;
+  return ciA[1] < ciB[0] || ciB[1] < ciA[0];
+}
+
+/** Score achieved per dollar spent. Returns "—" when cost is missing or zero. */
+export function formatScorePerDollar(
+  score: number | undefined | null,
+  cost: number | undefined | null
+): string {
+  if (score == null || cost == null || cost <= 0) return "—";
+  return (score / cost).toFixed(2);
+}
+
+/** Score achieved per 1M tokens. Returns "—" when tokens are missing or zero. */
+export function formatScorePerMTokens(
+  score: number | undefined | null,
+  tokens: number | undefined | null
+): string {
+  if (score == null || tokens == null || tokens <= 0) return "—";
+  return (score / (tokens / 1_000_000)).toFixed(2);
+}
