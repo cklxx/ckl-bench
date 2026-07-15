@@ -1,15 +1,29 @@
 #!/usr/bin/env python3
+"""Claude Code CLI wrapper for ckl-bench command-agent evaluation.
+
+Reads a JSON payload from stdin, invokes the Claude Code CLI in an isolated
+workspace, and writes a JSON response to stdout.  Unlike the dsx/codex
+wrappers, Claude Code speaks JSON natively (usage is in stdout) and needs
+Anthropic-format env vars set.
+
+Configuration via env vars:
+  CKL_CLAUDE_COMMAND       claude binary or full command (default: "claude")
+  CKL_CLAUDE_MODEL         model name passed to --model
+  CKL_CLAUDE_TIMEOUT_S     per-case timeout in seconds (default: 300)
+  CKL_CLAUDE_WORKSPACE_DIR root for isolated workspaces (default: .tmp-runs/claude-code-workspaces)
+  CKL_CLAUDE_API_KEY       API key (also falls back to ANTHROPIC_API_KEY, etc.)
+  CKL_CLAUDE_ANTHROPIC_BASE_URL  base URL
+"""
 from __future__ import annotations
 
 import json
 import os
-import re
 import shlex
-import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+
+from _common import build_prompt, extract_text, prepare_workspace, sync_workspace
 
 KEY_ENVS = ("CKL_CLAUDE_API_KEY", "ANTHROPIC_API_KEY", "DSV4_API_KEY", "DEEPSEEK_API_KEY")
 BASE_URL_ENVS = ("CKL_CLAUDE_ANTHROPIC_BASE_URL", "ANTHROPIC_BASE_URL", "DSV4_ANTHROPIC_BASE_URL")
@@ -20,7 +34,9 @@ def main() -> int:
     payload = json.loads(sys.stdin.read())
     case_id = str(payload.get("case_id") or "case")
     source_workspace = Path(payload["workspace_path"]) if payload.get("workspace_path") else None
-    inspect_workspace = _prepare_inspect_workspace(case_id, source_workspace)
+    workspace = prepare_workspace(
+        case_id, source_workspace, "CKL_CLAUDE_WORKSPACE_DIR", ".tmp-runs/claude-code-workspaces"
+    )
 
     env = _claude_env()
     missing = _missing_env(env)
@@ -28,56 +44,26 @@ def main() -> int:
         print(json.dumps({"text": missing}, ensure_ascii=True))
         return 2
 
-    command = _claude_command(env, inspect_workspace, _prompt(payload, inspect_workspace))
+    prompt = build_prompt(str(payload.get("prompt") or ""), workspace)
+    command = _claude_command(env, workspace, prompt)
     timeout_s = int(float(payload.get("timeout_s") or os.environ.get("CKL_CLAUDE_TIMEOUT_S") or 300))
     completed = subprocess.run(
-        command,
-        cwd=inspect_workspace,
-        env=env,
-        text=True,
-        capture_output=True,
-        timeout=timeout_s,
+        command, cwd=workspace, env=env,
+        text=True, capture_output=True, timeout=timeout_s,
     )
-    text = _extract_text(completed.stdout)
+    text = extract_text(completed.stdout)
     usage = _extract_usage(completed.stdout)
     if source_workspace:
-        _sync_workspace(inspect_workspace, source_workspace)
+        sync_workspace(workspace, source_workspace)
     output = {
         "text": text,
         "returncode": completed.returncode,
-        "workspace": str(inspect_workspace),
+        "workspace": str(workspace),
         "usage": usage,
         "stderr_tail": completed.stderr.strip()[-2000:],
     }
     print(json.dumps(output, ensure_ascii=True))
     return 0 if completed.returncode == 0 else completed.returncode
-
-
-def _prepare_inspect_workspace(case_id: str, source_workspace: Path | None) -> Path:
-    root = Path(os.environ.get("CKL_CLAUDE_WORKSPACE_DIR", ".tmp-runs/claude-code-workspaces"))
-    target = root / _slug(case_id)
-    if target.exists():
-        shutil.rmtree(target)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if source_workspace:
-        shutil.copytree(source_workspace, target)
-    else:
-        target.mkdir(parents=True)
-    return target
-
-
-def _sync_workspace(source: Path, destination: Path) -> None:
-    for child in destination.iterdir():
-        if child.is_dir():
-            shutil.rmtree(child)
-        else:
-            child.unlink()
-    for child in source.iterdir():
-        dest = destination / child.name
-        if child.is_dir():
-            shutil.copytree(child, dest)
-        else:
-            shutil.copy2(child, dest)
 
 
 def _claude_env() -> dict[str, str]:
@@ -107,15 +93,11 @@ def _claude_command(env: dict[str, str], workspace: Path, prompt: str) -> list[s
     command = shlex.split(env.get("CKL_CLAUDE_COMMAND", "claude"))
     command.extend(
         [
-            "--bare",
-            "--print",
-            "--output-format",
+            "--bare", "--print", "--output-format",
             env.get("CKL_CLAUDE_OUTPUT_FORMAT", "json"),
-            "--no-session-persistence",
-            "--permission-mode",
+            "--no-session-persistence", "--permission-mode",
             env.get("CKL_CLAUDE_PERMISSION_MODE", "acceptEdits"),
-            "--add-dir",
-            str(workspace),
+            "--add-dir", str(workspace),
         ]
     )
     model = env.get("CKL_CLAUDE_MODEL") or env.get("ANTHROPIC_MODEL")
@@ -126,34 +108,6 @@ def _claude_command(env: dict[str, str], workspace: Path, prompt: str) -> list[s
         command.extend(["--allowedTools", tools])
     command.append(prompt)
     return command
-
-
-def _prompt(payload: dict[str, Any], workspace: Path) -> str:
-    prompt = str(payload.get("prompt") or "")
-    return (
-        "You are being evaluated by ckl-bench as a command-line coding agent.\n"
-        f"Work only inside this workspace: {workspace}\n"
-        "Edit files directly in that workspace. Do not touch files outside it.\n"
-        "When the task is complete, give a concise final answer. If the task asks "
-        "you to print DONE, include DONE in the final answer.\n\n"
-        f"Task:\n{prompt}\n"
-    )
-
-
-def _extract_text(stdout: str) -> str:
-    stripped = stdout.strip()
-    if not stripped:
-        return ""
-    try:
-        data = json.loads(stripped)
-    except json.JSONDecodeError:
-        return stripped
-    if isinstance(data, dict):
-        for key in ("result", "text", "response", "output", "final", "answer"):
-            value = data.get(key)
-            if isinstance(value, str):
-                return value
-    return stripped
 
 
 def _extract_usage(stdout: str) -> dict[str, int] | None:
@@ -190,11 +144,6 @@ def _deepseek_anthropic_url(env: dict[str, str]) -> str:
     if base == "https://api.deepseek.com":
         return "https://api.deepseek.com/anthropic"
     return ""
-
-
-def _slug(value: str) -> str:
-    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")
-    return slug or "case"
 
 
 if __name__ == "__main__":
