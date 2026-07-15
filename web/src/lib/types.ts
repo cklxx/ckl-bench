@@ -64,6 +64,7 @@ export interface RunSummary {
     git_sha?: string;
     model?: { model?: string; [key: string]: unknown };
     repeat?: number;
+    case_paths?: string[];
     [key: string]: unknown;
   };
   [key: string]: unknown;
@@ -185,4 +186,32 @@ export interface ProviderInfo {
   namespace: string;
   aliases: string[];
   default: string;
+}
+
+// --- Settings types (server mode) ---
+
+export interface AdapterConfig {
+  api_key?: string;
+  base_url?: string;
+  model?: string;
+  command?: string;
+  workspace_dir?: string;
+  [key: string]: any;
+}
+
+export interface Settings {
+  adapters: Record<string, AdapterConfig>;
+  defaults: {
+    repeat: number;
+    concurrency: number;
+    seed: number;
+    judge: string;
+  };
+  active_adapters: string[];
+}
+
+export interface AdapterTestResult {
+  ok: boolean;
+  output: string;
+  error: string;
 }

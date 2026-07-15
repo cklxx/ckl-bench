@@ -7,11 +7,10 @@ response to stdout.
 
 Configuration via env vars:
   CKL_DSX_COMMAND       dsx binary or full command (default: "dsx")
-  CKL_DSX_MODEL         model name passed to --model
+  CKL_DSX_MODEL         model name passed to -m/--model
   CKL_DSX_TIMEOUT_S     per-case timeout in seconds (default: 300)
   CKL_DSX_WORKSPACE_DIR root for isolated workspaces (default: .tmp-runs/dsx-workspaces)
   CKL_DSX_EXTRA_ARGS    space-separated extra args passed to dsx
-  CKL_DSX_PROMPT_FLAG   flag used to pass the prompt (default: "--prompt")
 """
 from __future__ import annotations
 
@@ -50,6 +49,7 @@ def main() -> int:
         "text": text,
         "returncode": completed.returncode,
         "workspace": str(inspect_workspace),
+        "usage": _parse_usage(completed.stderr),
         "stderr_tail": completed.stderr.strip()[-2000:],
     }
     print(json.dumps(output, ensure_ascii=True))
@@ -85,14 +85,14 @@ def _sync_workspace(source: Path, destination: Path) -> None:
 
 def _dsx_command(workspace: Path, prompt: str) -> list[str]:
     command = shlex.split(os.environ.get("CKL_DSX_COMMAND", "dsx"))
+    command.extend(["exec", "--skip-git-repo-check"])
     model = os.environ.get("CKL_DSX_MODEL")
     if model:
-        command.extend(["--model", model])
+        command.extend(["-m", model])
     extra = os.environ.get("CKL_DSX_EXTRA_ARGS")
     if extra:
         command.extend(shlex.split(extra))
-    prompt_flag = os.environ.get("CKL_DSX_PROMPT_FLAG", "--prompt")
-    command.extend([prompt_flag, prompt])
+    command.append(prompt)
     return command
 
 
@@ -122,6 +122,15 @@ def _extract_text(stdout: str) -> str:
             if isinstance(value, str):
                 return value
     return stripped
+
+
+def _parse_usage(stderr: str) -> dict[str, int] | None:
+    """Parse token usage from dsx stderr (e.g. 'tokens used\\n423')."""
+    m = re.search(r"tokens used\s*\n\s*(\d+)", stderr)
+    if m:
+        total = int(m.group(1))
+        return {"total_tokens": total, "input_tokens": 0, "output_tokens": 0}
+    return None
 
 
 def _slug(value: str) -> str:

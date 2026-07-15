@@ -7,6 +7,8 @@ import type {
   ConfigInfo,
   ProviderInfo,
   RunInfo,
+  Settings,
+  AdapterTestResult,
 } from "./types";
 
 const BASE = ""; // Same-origin; the server serves both the app and the API.
@@ -89,6 +91,31 @@ export function listProviders(): Promise<ProviderInfo[]> {
   return request<ProviderInfo[]>("/api/providers");
 }
 
+// --- Settings ---
+
+export function getSettings(): Promise<Settings> {
+  return request<Settings>("/api/settings");
+}
+
+export function updateSettings(settings: Settings): Promise<{ ok: boolean }> {
+  return request("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+}
+
+export function testAdapter(
+  adapter_name: string,
+  config: Record<string, any>,
+  signal?: AbortSignal
+): Promise<AdapterTestResult> {
+  return request("/api/settings/test", {
+    method: "POST",
+    body: JSON.stringify({ adapter_name, config }),
+    signal,
+  });
+}
+
 // --- WebSocket ---
 
 export type ProgressListener = (event: any) => void;
@@ -98,6 +125,8 @@ export class ProgressSocket {
   private listeners = new Set<ProgressListener>();
   private reconnectTimer: any = null;
   private url: string;
+  private retries = 0;
+  private maxRetries = 10;
 
   constructor(wsPort?: number) {
     const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -117,9 +146,16 @@ export class ProgressSocket {
         }
         this.listeners.forEach((fn) => fn(event));
       };
+      this.ws.onopen = () => {
+        this.retries = 0; // reset on successful connection
+      };
       this.ws.onclose = () => {
-        // Try to reconnect after a delay.
-        this.reconnectTimer = setTimeout(() => this.connect(), 3000);
+        // Try to reconnect after a delay, up to maxRetries (polling fallback
+        // takes over if we give up).
+        if (this.retries < this.maxRetries) {
+          this.retries++;
+          this.reconnectTimer = setTimeout(() => this.connect(), 3000);
+        }
       };
       this.ws.onerror = () => {
         // Will trigger onclose -> reconnect.

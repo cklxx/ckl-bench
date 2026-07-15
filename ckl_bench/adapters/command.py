@@ -5,9 +5,19 @@ import os
 import shlex
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 from .base import GenerateRequest, GenerateResponse
+
+# Known CLI agents: when the command first token matches one of these, the
+# adapter routes through the matching wrapper script so the user only needs to
+# set the raw CLI name (e.g. "dsx") instead of "python scripts/dsx_wrapper.py".
+_KNOWN_CLIS: dict[str, str] = {
+    "dsx": "dsx_wrapper.py",
+    "codex": "codex_wrapper.py",
+    "claude": "claude_code_wrapper.py",
+}
 
 
 class CommandAdapter:
@@ -19,6 +29,13 @@ class CommandAdapter:
         command = config.get("command")
         if not command:
             raise ValueError("command adapter requires config key 'command' or --command")
+        # Auto-wrap known CLIs: if the command is a raw CLI name, route through
+        # the matching wrapper script so the user only sees the CLI name.
+        first_token = shlex.split(command)[0] if isinstance(command, str) else command[0]
+        cli_name = Path(first_token).name
+        if cli_name in _KNOWN_CLIS:
+            wrapper = Path(__file__).parent.parent.parent / "scripts" / _KNOWN_CLIS[cli_name]
+            command = f"{sys.executable} {wrapper}"
         self.command = command
         self.shell = bool(config.get("shell", isinstance(command, str)))
         self.cwd = config.get("cwd")
@@ -73,12 +90,21 @@ class CommandAdapter:
             return GenerateResponse(text=stdout, raw=raw)
 
         if isinstance(parsed, dict):
+            # Extract usage from wrapper output for cost tracking.
+            metadata: dict[str, Any] = {}
+            usage = parsed.get("usage")
+            if isinstance(usage, dict):
+                metadata["usage"] = {
+                    "total_tokens": int(usage.get("total_tokens", 0)),
+                    "input_tokens": int(usage.get("input_tokens", 0)),
+                    "output_tokens": int(usage.get("output_tokens", 0)),
+                }
             for key in ("text", "response", "output", "final", "answer"):
                 value = parsed.get(key)
                 if isinstance(value, str):
-                    return GenerateResponse(text=value, raw=parsed)
-        print(
-            "warning: command output JSON did not contain a text field; using raw stdout",
-            file=sys.stderr,
-        )
-        return GenerateResponse(text=stdout, raw=parsed)
+                    return GenerateResponse(text=value, raw=parsed, metadata=metadata)
+            print(
+                "warning: command output JSON did not contain a text field; using raw stdout",
+                file=sys.stderr,
+            )
+            return GenerateResponse(text=stdout, raw=parsed, metadata=metadata)

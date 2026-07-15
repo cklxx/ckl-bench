@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import shutil
 import signal
@@ -612,6 +613,13 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         pid = _read_pid()
         print(f"server already running (pid {pid})", file=sys.stderr)
         return 1
+
+    # Configure logging so server activity is visible on the console.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
     from ckl_bench.core.server import BenchServer
 

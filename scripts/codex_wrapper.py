@@ -49,6 +49,7 @@ def main() -> int:
         "text": text,
         "returncode": completed.returncode,
         "workspace": str(inspect_workspace),
+        "usage": _parse_usage(completed.stderr),
         "stderr_tail": completed.stderr.strip()[-2000:],
     }
     print(json.dumps(output, ensure_ascii=True))
@@ -121,6 +122,15 @@ def _extract_text(stdout: str) -> str:
             if isinstance(value, str):
                 return value
     return stripped
+
+
+def _parse_usage(stderr: str) -> dict[str, int] | None:
+    """Parse token usage from codex stderr (e.g. 'tokens used\\n423')."""
+    m = re.search(r"tokens used\s*\n\s*(\d+)", stderr)
+    if m:
+        total = int(m.group(1))
+        return {"total_tokens": total, "input_tokens": 0, "output_tokens": 0}
+    return None
 
 
 def _slug(value: str) -> str:

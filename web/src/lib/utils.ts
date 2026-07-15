@@ -5,11 +5,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatPercent(value: number, digits = 1): string {
+export function formatPercent(value: number | undefined | null, digits = 1): string {
+  if (value == null) return "—";
   return `${(value * 100).toFixed(digits)}%`;
 }
 
-export function formatNumber(value: number): string {
+export function formatNumber(value: number | undefined | null): string {
+  if (value == null) return "—";
   return value.toLocaleString("en-US");
 }
 

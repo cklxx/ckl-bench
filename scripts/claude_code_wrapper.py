@@ -39,12 +39,14 @@ def main() -> int:
         timeout=timeout_s,
     )
     text = _extract_text(completed.stdout)
+    usage = _extract_usage(completed.stdout)
     if source_workspace:
         _sync_workspace(inspect_workspace, source_workspace)
     output = {
         "text": text,
         "returncode": completed.returncode,
         "workspace": str(inspect_workspace),
+        "usage": usage,
         "stderr_tail": completed.stderr.strip()[-2000:],
     }
     print(json.dumps(output, ensure_ascii=True))
@@ -152,6 +154,27 @@ def _extract_text(stdout: str) -> str:
             if isinstance(value, str):
                 return value
     return stripped
+
+
+def _extract_usage(stdout: str) -> dict[str, int] | None:
+    """Extract usage from Claude Code JSON output."""
+    stripped = stdout.strip()
+    if not stripped:
+        return None
+    try:
+        data = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    usage = data.get("usage")
+    if isinstance(usage, dict):
+        return {
+            "total_tokens": int(usage.get("total_tokens", 0)),
+            "input_tokens": int(usage.get("input_tokens", 0)),
+            "output_tokens": int(usage.get("output_tokens", 0)),
+        }
+    return None
 
 
 def _first_env(env: dict[str, str], names: tuple[str, ...]) -> str:

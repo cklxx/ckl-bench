@@ -59,10 +59,12 @@ export function RunTable({ runs }: RunTableProps) {
               {formatPercent(r.pass_rate)}
             </TableCell>
             <TableCell className="text-right font-variant-numeric">
-              {r.cost_usd != null ? formatCost(r.cost_usd) : "—"}
+              {r.cost_usd != null && r.cost_usd > 0
+                ? formatCost(r.cost_usd)
+                : "—"}
             </TableCell>
             <TableCell className="text-right font-variant-numeric">
-              {r.usage?.total_tokens != null
+              {r.usage?.total_tokens != null && r.usage.total_tokens > 0
                 ? formatNumber(r.usage.total_tokens)
                 : "—"}
             </TableCell>

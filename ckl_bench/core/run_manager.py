@@ -53,6 +53,7 @@ class RunState:
     error: str | None = None
     started_at: float = field(default_factory=time.time)
     completed_at: float | None = None
+    case_paths: list[str] = field(default_factory=list)
 
 
 class RunManager:
@@ -138,6 +139,7 @@ class RunManager:
         cache = ResponseCache(Path(cache_dir)) if cache_dir else None
 
         state = RunState(run_id=run_id)
+        state.case_paths = list(paths)
         cancel_flag = threading.Event()
 
         with self._lock:
@@ -184,6 +186,9 @@ class RunManager:
             else:
                 state.status = "completed"
                 state.summary = result["summary"]
+                if state.summary is not None:
+                    manifest = state.summary.setdefault("manifest", {})
+                    manifest["case_paths"] = state.case_paths
         except Exception as exc:  # noqa: BLE001 - record and surface
             state.status = "failed"
             state.error = f"{type(exc).__name__}: {exc}"

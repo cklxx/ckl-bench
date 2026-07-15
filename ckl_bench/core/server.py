@@ -37,6 +37,15 @@ from ckl_bench.core.cases import (
 from ckl_bench.core.providers import load_namespaces, load_provider, redacted_namespace
 from ckl_bench.core.run_manager import RunManager, collect_runs
 from ckl_bench.core.reporting import _render_react_page
+from ckl_bench.core.settings import (
+    Settings,
+    apply_settings,
+    load_settings,
+    mask_secrets,
+    save_settings,
+    settings_from_dict,
+    test_adapter,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -61,7 +70,11 @@ class BenchServer:
         self.manager = RunManager(self.runs_dir, self.cases_dir)
         self._http_server: ThreadingHTTPServer | None = None
         self._ws_thread: threading.Thread | None = None
+        self._ws_loop: Any = None  # asyncio event loop for the WS server
         self._stop_event = threading.Event()
+        # Load and apply persistent settings (env vars for wrapper scripts).
+        self.settings: Settings = load_settings()
+        apply_settings(self.settings)
 
     def start(self, blocking: bool = True) -> None:
         """Start the server. *blocking=False* runs it in a background thread."""
@@ -74,6 +87,8 @@ class BenchServer:
         addr = f"http://{self.host}:{self.port}"
         _log.info("ckl-bench server running at %s", addr)
         print(f"ckl-bench dashboard: {addr}")
+        ws_port = self.port + 1
+        _log.info("WebSocket at ws://%s:%s/ws", self.host, ws_port)
 
         if blocking:
             try:
@@ -126,11 +141,15 @@ class BenchServer:
                 manager.remove_listener(listener)
 
         loop = asyncio.new_event_loop()
+        self._ws_loop = loop
+        self._ws_stop: Any = None  # asyncio.Event, set inside run_ws
 
         async def run_ws() -> None:
+            stop_event = asyncio.Event()
+            self._ws_stop = stop_event
             async with websockets.serve(ws_handler, self.host, ws_port):
                 _log.info("WebSocket server running at ws://%s:%d", self.host, ws_port)
-                await asyncio.Future()  # run forever
+                await stop_event.wait()  # run until shutdown sets the event
 
         def _thread_main() -> None:
             asyncio.set_event_loop(loop)
@@ -138,6 +157,8 @@ class BenchServer:
                 loop.run_until_complete(run_ws())
             except asyncio.CancelledError:
                 pass
+            finally:
+                loop.close()
 
         self._ws_thread = threading.Thread(target=_thread_main, name="ckl-ws", daemon=True)
         self._ws_thread.start()
@@ -146,6 +167,13 @@ class BenchServer:
         """Gracefully shut down the server."""
         if self._http_server is not None:
             self._http_server.shutdown()
+        # Signal the WebSocket loop to exit cleanly (lets run_ws complete and
+        # the async with block close the server before the loop is closed).
+        if self._ws_loop is not None and self._ws_stop is not None:
+            try:
+                self._ws_loop.call_soon_threadsafe(self._ws_stop.set)
+            except Exception:  # noqa: BLE001 - loop may already be closed
+                pass
         self._stop_event.set()
 
 
@@ -227,6 +255,8 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
                 self._list_providers()
             elif path == "/api/config":
                 self._get_config()
+            elif path == "/api/settings":
+                self._get_settings()
             else:
                 self._error(404, "not found")
         except Exception as exc:  # noqa: BLE001
@@ -242,6 +272,8 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
                 self._create_case(body)
             elif path == "/api/runs":
                 self._launch_run(body)
+            elif path == "/api/settings/test":
+                self._test_settings_adapter(body)
             else:
                 self._error(404, "not found")
         except CaseValidationError as exc:
@@ -259,6 +291,8 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
             body = self._read_body()
             if path.startswith("/api/cases/"):
                 self._update_case(path.rsplit("/", 1)[-1], body)
+            elif path == "/api/settings":
+                self._update_settings(body)
             else:
                 self._error(404, "not found")
         except CaseValidationError as exc:
@@ -459,3 +493,29 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
                 "ws_port": self.bench_server.port + 1,
             }
         )
+
+    # -- Settings API -------------------------------------------------------
+
+    def _get_settings(self) -> None:
+        masked = mask_secrets(self.bench_server.settings)
+        self._json(
+            {
+                "adapters": masked.adapters,
+                "defaults": masked.defaults,
+                "active_adapters": masked.active_adapters,
+            }
+        )
+
+    def _update_settings(self, body: dict[str, Any]) -> None:
+        settings = settings_from_dict(body)
+        save_settings(settings, existing=self.bench_server.settings)
+        apply_settings(settings)
+        self.bench_server.settings = settings
+        self._json({"ok": True})
+
+    def _test_settings_adapter(self, body: dict[str, Any]) -> None:
+        adapter_name = body.get("adapter_name", "mock")
+        config = body.get("config", {}) or {}
+        result = test_adapter(adapter_name, config)
+        status = 200 if result["ok"] else 400
+        self._json(result, status=status)
