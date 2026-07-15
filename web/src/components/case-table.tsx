@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import type { Result } from "@/lib/types";
 import { formatPercent, formatCost, shortId, scoreVariant } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
-import { useToast } from "@/components/ui/toast";
+import { useCopyToast } from "@/lib/use-copy-toast";
 
 interface CaseTableProps {
   results: Result[];
@@ -18,12 +18,7 @@ interface CaseTableProps {
 
 export function CaseTable({ results }: CaseTableProps) {
   const t = useT();
-  const { toast } = useToast();
-  const copyTag = (e: React.MouseEvent, value: string) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(value);
-    toast(t("common.copied", { value }));
-  };
+  const copyTag = useCopyToast();
   return (
     <Table>
       <TableHeader>

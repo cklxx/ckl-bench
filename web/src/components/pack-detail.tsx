@@ -4,7 +4,7 @@ import { Sheet } from "@/components/ui/sheet";
 import { PlayCircle, Box } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
-import { useToast } from "@/components/ui/toast";
+import { useCopyToast } from "@/lib/use-copy-toast";
 import type { CaseListItem } from "@/lib/types";
 
 export interface PackInfo {
@@ -46,17 +46,11 @@ export function PackDetail({
   onRun,
 }: PackDetailProps) {
   const t = useT();
-  const { toast } = useToast();
+  const copyTag = useCopyToast();
   const hasRunning = runStates.some(
     (r) => r.status === "running" || r.status === "pending"
   );
   const hasCompleted = runStates.some((r) => r.status === "completed");
-
-  const copyTag = (e: React.MouseEvent, value: string) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(value);
-    toast(t("common.copied", { value }));
-  };
 
   return (
     <Sheet open={!!pack} onClose={onClose} side="right" width="75%">

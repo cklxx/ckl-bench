@@ -28,7 +28,7 @@ import {
 } from "@/components/pack-detail";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageToggle, useT } from "@/lib/i18n";
-import { useToast } from "@/components/ui/toast";
+import { useCopyToast } from "@/lib/use-copy-toast";
 import { AnalysisCards } from "@/components/analysis-cards";
 import { TrendChart } from "@/components/trend-chart";
 import { Heatmap } from "@/components/heatmap";
@@ -400,17 +400,11 @@ function BenchPackCard({
   onEditCase: (id: string) => void;
 }) {
   const t = useT();
-  const { toast } = useToast();
+  const copyTag = useCopyToast();
   const hasRunning = runStates.some(
     (r) => r.status === "running" || r.status === "pending"
   );
   const hasCompleted = runStates.some((r) => r.status === "completed");
-
-  const copyTag = (e: React.MouseEvent, value: string) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(value);
-    toast(t("common.copied", { value }));
-  };
 
   return (
     <Card
