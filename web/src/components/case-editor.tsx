@@ -4,7 +4,9 @@ import type { CaseDetail } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { X, Save, Loader2 } from "lucide-react";
+import { Sheet } from "@/components/ui/sheet";
+import { Save, Loader2 } from "lucide-react";
+import { useT } from "@/lib/i18n";
 
 interface CaseEditorProps {
   caseId: string | null;
@@ -13,6 +15,7 @@ interface CaseEditorProps {
 }
 
 export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
+  const t = useT();
   const [c, setC] = useState<CaseDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -32,8 +35,6 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
       .finally(() => setLoading(false));
   }, [caseId]);
 
-  if (!caseId) return null;
-
   const updateField = <K extends keyof CaseDetail>(key: K, value: CaseDetail[K]) => {
     setC((prev) => (prev ? { ...prev, [key]: value } : prev));
   };
@@ -45,7 +46,7 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
     try {
       expectations = JSON.parse(expectationsText);
     } catch {
-      setError("Expectations must be valid JSON array");
+      setError(t("caseEditor.invalidJson"));
       return;
     }
     setSaving(true);
@@ -61,17 +62,15 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative flex w-[640px] max-h-[85vh] flex-col bg-background shadow-lg rounded-lg">
-        <div className="flex h-12 items-center justify-between px-5">
-          <h2 className="text-base font-semibold">Edit Case</h2>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="h-4 w-4" />
-          </Button>
+    <Sheet open={!!caseId} onClose={onClose} side="right" width="56%" zIndex={51}>
+      <div className="flex flex-1 min-h-0 flex-col">
+        {/* Header */}
+        <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
+          <h2 className="text-base font-semibold">{t("caseEditor.title")}</h2>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-4">
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {error && (
             <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
               {error}
@@ -81,17 +80,17 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
           {loading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading case...
+              {t("caseEditor.loading")}
             </div>
           ) : c ? (
             <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">ID</label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">{t("caseEditor.id")}</label>
                   <Input value={c.id} disabled />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">Type</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">{t("caseEditor.type")}</label>
                   <Input
                     value={c.type}
                     onChange={(e) => updateField("type", e.target.value)}
@@ -99,16 +98,16 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Title</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">{t("caseEditor.caseTitle")}</label>
                 <Input
                   value={c.title}
                   onChange={(e) => updateField("title", e.target.value)}
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Prompt</label>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">{t("caseEditor.prompt")}</label>
                 <Textarea
                   rows={6}
                   value={c.input?.prompt || ""}
@@ -118,9 +117,9 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
                 />
               </div>
 
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <label className="text-xs font-medium text-muted-foreground">
-                  Expectations (JSON)
+                  {t("caseEditor.expectations")}
                 </label>
                 <Textarea
                   rows={6}
@@ -130,10 +129,10 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Capability
+                    {t("caseEditor.capability")}
                   </label>
                   <Input
                     value={(c.capability || []).join(", ")}
@@ -146,22 +145,22 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
                           .filter(Boolean)
                       )
                     }
-                    placeholder="reasoning, code"
+                    placeholder={t("caseEditor.capabilityPh")}
                   />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Difficulty
+                    {t("caseEditor.difficulty")}
                   </label>
                   <Input
                     value={c.difficulty || ""}
                     onChange={(e) => updateField("difficulty", e.target.value || null)}
-                    placeholder="easy / medium / hard"
+                    placeholder={t("caseEditor.difficultyPh")}
                   />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">
-                    Timeout (s)
+                    {t("caseEditor.timeout")}
                   </label>
                   <Input
                     type="number"
@@ -179,17 +178,18 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
           ) : null}
         </div>
 
-        <div className="px-5 pb-5">
+        {/* Footer */}
+        <div className="shrink-0 border-t px-6 py-4">
           <Button className="w-full" onClick={handleSave} disabled={saving || !c}>
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Save className="h-4 w-4" />
             )}
-            {saving ? "Saving..." : "Save Changes"}
+            {saving ? t("common.saving") : t("common.save")}
           </Button>
         </div>
       </div>
-    </div>
+    </Sheet>
   );
 }

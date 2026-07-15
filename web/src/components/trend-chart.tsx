@@ -9,12 +9,14 @@ import {
 } from "recharts";
 import type { RunSummary } from "@/lib/types";
 import { shortId } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface TrendChartProps {
   runs: RunSummary[];
 }
 
 export function TrendChart({ runs }: TrendChartProps) {
+  const t = useT();
   const data = runs.map((r) => ({
     name: shortId(r.run_id, 8),
     score: Math.round(r.score * 1000) / 10,
@@ -50,7 +52,7 @@ export function TrendChart({ runs }: TrendChartProps) {
             stroke="hsl(var(--primary))"
             strokeWidth={2}
             dot={{ r: 3 }}
-            name="Score"
+            name={t("trend.score")}
           />
           <Line
             type="monotone"
@@ -58,7 +60,7 @@ export function TrendChart({ runs }: TrendChartProps) {
             stroke="hsl(var(--success))"
             strokeWidth={2}
             dot={{ r: 3 }}
-            name="Pass Rate"
+            name={t("trend.passRate")}
             strokeDasharray="5 3"
           />
         </LineChart>

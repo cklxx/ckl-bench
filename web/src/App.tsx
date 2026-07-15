@@ -1,5 +1,6 @@
 import { readData, hasData } from "@/lib/data";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle, useT } from "@/lib/i18n";
 import { ReportPage } from "@/pages/report-page";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { ProbePage } from "@/pages/probe-page";
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 export default function App() {
   const data = readData();
   const ready = hasData(data);
+  const t = useT();
 
   if (data.page === "app") {
     return <BenchPage />;
@@ -25,7 +27,10 @@ export default function App() {
               {data.page}
             </Badge>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <LanguageToggle />
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
@@ -38,9 +43,7 @@ export default function App() {
       </main>
 
       <footer className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
-        <p className="text-xs text-muted-foreground">
-          ckl-bench &middot; generated evaluation report
-        </p>
+        <p className="text-xs text-muted-foreground">{t("app.footer")}</p>
       </footer>
     </div>
   );
@@ -64,11 +67,12 @@ function renderPage(data: ReturnType<typeof readData>) {
 }
 
 function EmptyState({ page }: { page: string }) {
+  const t = useT();
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      <p className="text-lg font-medium">No data available</p>
+      <p className="text-lg font-medium">{t("app.empty.title")}</p>
       <p className="mt-1 text-sm text-muted-foreground">
-        The {page} page has no data to display yet.
+        {t("app.empty.subtitle", { page })}
       </p>
     </div>
   );

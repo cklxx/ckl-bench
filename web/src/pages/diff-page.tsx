@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import type { DiffData } from "@/lib/types";
 import { formatPercent, shortId } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface DiffPageProps {
   diff: DiffData;
@@ -33,21 +34,6 @@ function statusVariant(
   }
 }
 
-function statusLabel(status: string): string {
-  switch (status) {
-    case "improved":
-      return "↑ Improved";
-    case "regressed":
-      return "↓ Regressed";
-    case "added":
-      return "+ Added";
-    case "removed":
-      return "− Removed";
-    default:
-      return "→ Unchanged";
-  }
-}
-
 function deltaBadge(delta: number | null) {
   if (delta == null) return <span className="text-muted-foreground">—</span>;
   const pct = Math.round(delta * 1000) / 10;
@@ -62,6 +48,7 @@ function deltaBadge(delta: number | null) {
 }
 
 export function DiffPage({ diff }: DiffPageProps) {
+  const t = useT();
   const d = diff;
   const scoreDelta = Math.round(d.score_delta * 1000) / 10;
   const scoreDeltaColor =
@@ -71,11 +58,26 @@ export function DiffPage({ diff }: DiffPageProps) {
       ? "text-destructive"
       : "text-muted-foreground";
 
+  const statusLabel = (status: string): string => {
+    switch (status) {
+      case "improved":
+        return t("diff.improved");
+      case "regressed":
+        return t("diff.regressed");
+      case "added":
+        return t("diff.added");
+      case "removed":
+        return t("diff.removed");
+      default:
+        return t("diff.unchanged");
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Run Diff</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("diff.title")}</h1>
         <p className="text-sm text-muted-foreground">
           <span className="font-variant-numeric">{shortId(d.run_a)}</span>
           {" → "}
@@ -88,7 +90,7 @@ export function DiffPage({ diff }: DiffPageProps) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Run A
+              {t("diff.runA")}
               {d.adapter_a && (
                 <Badge variant="secondary" className="ml-2">
                   {d.adapter_a}
@@ -109,7 +111,7 @@ export function DiffPage({ diff }: DiffPageProps) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Run B
+              {t("diff.runB")}
               {d.adapter_b && (
                 <Badge variant="secondary" className="ml-2">
                   {d.adapter_b}
@@ -130,7 +132,7 @@ export function DiffPage({ diff }: DiffPageProps) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Delta
+              {t("diff.delta")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -141,7 +143,10 @@ export function DiffPage({ diff }: DiffPageProps) {
               {scoreDelta.toFixed(1)}%
             </div>
             <p className="text-xs text-muted-foreground">
-              {d.counts.improved} improved, {d.counts.regressed} regressed
+              {t("diff.summary", {
+                improved: d.counts.improved,
+                regressed: d.counts.regressed,
+              })}
             </p>
           </CardContent>
         </Card>
@@ -153,18 +158,18 @@ export function DiffPage({ diff }: DiffPageProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            Case Changes ({d.cases.length})
+            {t("diff.caseChanges", { count: d.cases.length })}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Case</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Score A</TableHead>
-                <TableHead className="text-right">Score B</TableHead>
-                <TableHead className="text-right">Delta</TableHead>
+                <TableHead>{t("diff.case")}</TableHead>
+                <TableHead>{t("diff.status")}</TableHead>
+                <TableHead className="text-right">{t("diff.scoreA")}</TableHead>
+                <TableHead className="text-right">{t("diff.scoreB")}</TableHead>
+                <TableHead className="text-right">{t("diff.delta")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

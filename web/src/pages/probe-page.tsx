@@ -11,6 +11,7 @@ import {
 import { ScoreCard } from "@/components/score-card";
 import type { RunSummary, ProbeRow } from "@/lib/types";
 import { formatPercent } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface ProbePageProps {
   summary?: RunSummary;
@@ -25,64 +26,68 @@ function statusVariant(
   return "muted";
 }
 
-function statusLabel(status: ProbeRow["status"]): string {
-  if (status === "pass") return "PASS";
-  if (status === "fail") return "FAIL";
-  return "SKIP";
-}
-
 export function ProbePage({ summary, rows }: ProbePageProps) {
+  const t = useT();
   const passCount = rows.filter((r) => r.status === "pass").length;
   const failCount = rows.filter((r) => r.status === "fail").length;
   const skipCount = rows.filter((r) => r.status === "skip").length;
+
+  const statusLabel = (status: ProbeRow["status"]): string => {
+    if (status === "pass") return t("probe.pass");
+    if (status === "fail") return t("probe.fail");
+    return t("probe.skip");
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Probe Report</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("probe.title")}</h1>
         <p className="text-sm text-muted-foreground">
           {summary
-            ? `Run ${summary.run_id.slice(0, 16)} &middot; ${summary.adapter}`
-            : `${rows.length} probe${rows.length !== 1 ? "s" : ""}`}
+            ? `${t("report.run")} ${summary.run_id.slice(0, 16)} &middot; ${summary.adapter}`
+            : t("probe.summary", {
+                count: rows.length,
+                plural: rows.length !== 1 ? "s" : "",
+              })}
         </p>
       </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <ScoreCard
-          title="Passed"
+          title={t("probe.passed")}
           value={passCount / Math.max(rows.length, 1)}
-          description={`${passCount} of ${rows.length} probes`}
+          description={t("probe.passedDesc", { count: passCount, total: rows.length })}
           variant="success"
         />
         <ScoreCard
-          title="Failed"
+          title={t("probe.failed")}
           value={failCount / Math.max(rows.length, 1)}
-          description={`${failCount} of ${rows.length} probes`}
+          description={t("probe.failedDesc", { count: failCount, total: rows.length })}
           variant="destructive"
         />
         <ScoreCard
-          title="Skipped"
+          title={t("probe.skipped")}
           value={skipCount / Math.max(rows.length, 1)}
-          description={`${skipCount} of ${rows.length} probes`}
+          description={t("probe.skippedDesc", { count: skipCount, total: rows.length })}
         />
       </div>
 
       {/* Probe table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Probe Results</CardTitle>
+          <CardTitle className="text-base">{t("probe.results")}</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Target</TableHead>
-                <TableHead>Kind</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Score</TableHead>
-                <TableHead>Detail</TableHead>
+                <TableHead>{t("probe.target")}</TableHead>
+                <TableHead>{t("probe.kind")}</TableHead>
+                <TableHead>{t("probe.status")}</TableHead>
+                <TableHead className="text-right">{t("probe.score")}</TableHead>
+                <TableHead>{t("probe.detail")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

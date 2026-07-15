@@ -17,23 +17,23 @@ import type {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { SettingsDrawer } from "@/components/settings-drawer";
 import { CaseEditor } from "@/components/case-editor";
+import { RunDetail } from "@/components/run-detail";
+import {
+  PackDetail,
+  type PackInfo,
+  type PackRunState,
+} from "@/components/pack-detail";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle, useT } from "@/lib/i18n";
 import { AnalysisCards } from "@/components/analysis-cards";
 import { TrendChart } from "@/components/trend-chart";
 import { Heatmap } from "@/components/heatmap";
 import { RunTable } from "@/components/run-table";
 import { PlayCircle, Settings as SettingsIcon, Box, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-const PACK_DESC: Record<string, string> = {
-  chat: "API-only and chat cases covering reasoning, math, code, and long-tail knowledge.",
-  agent: "Agent cases with temporary workspaces and artifact checks.",
-  "doc-writing": "Documentation writing: API docs, READMEs, changelogs.",
-  "infra-code": "Infrastructure code: Docker, systemd, nginx, deploy scripts.",
-  "paper-reading": "Paper reading: abstract comprehension, method comparison, results.",
-};
 
 function packFromSource(source: string): string {
   const m = source.match(/cases\/([^/]+)/);
@@ -46,27 +46,17 @@ function packFromPaths(paths: string[] | undefined | null): string | null {
   return m ? m[1] : null;
 }
 
-interface PackInfo {
-  name: string;
-  cases: CaseListItem[];
-  capabilities: string[];
-}
-
-interface PackRunState {
-  runId: string;
-  adapter: string;
-  status: string;
-  progress: { total: number; completed: number; passed: number };
-  summary?: any;
-}
-
 export function BenchPage() {
+  const t = useT();
   const [config, setConfig] = useState<ConfigInfo | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [runs, setRuns] = useState<RunInfo[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [detailPack, setDetailPack] = useState<PackInfo | null>(null);
+  const [reportTab, setReportTab] = useState("overview");
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState("");
   const socketRef = useRef<ProgressSocket | null>(null);
@@ -230,7 +220,7 @@ export function BenchPage() {
   const launchPack = async (packName: string) => {
     const active = settings?.active_adapters || [];
     if (active.length === 0) {
-      setError("No active adapters selected. Configure adapters in Settings.");
+      setError(t("bench.noAdapters"));
       return;
     }
     for (const adapterKey of active) {
@@ -243,7 +233,7 @@ export function BenchPage() {
     setError("");
     const active = settings?.active_adapters || [];
     if (active.length === 0) {
-      setError("No active adapters selected. Configure adapters in Settings.");
+      setError(t("bench.noAdapters"));
       setLaunching(false);
       return;
     }
@@ -276,19 +266,20 @@ export function BenchPage() {
             disabled={launching || packs.length === 0}
           >
             <PlayCircle className="h-3.5 w-3.5" />
-            {launching ? "Launching..." : "Run All"}
+            {launching ? t("common.launching") : t("common.runAll")}
           </Button>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setSettingsOpen(true)}
-            aria-label="Settings"
+            aria-label={t("bench.settings")}
           >
             <SettingsIcon className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon" onClick={refresh}>
             <RefreshCw className="h-4 w-4" />
           </Button>
+          <LanguageToggle />
           <ThemeToggle />
         </div>
       </header>
@@ -301,7 +292,7 @@ export function BenchPage() {
         )}
 
         <section className="space-y-4">
-          <h1 className="text-xl font-semibold tracking-tight">Bench Collections</h1>
+          <h1 className="text-xl font-semibold tracking-tight">{t("bench.title")}</h1>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {packs.map((pack) => (
               <BenchPackCard
@@ -309,6 +300,7 @@ export function BenchPage() {
                 pack={pack}
                 runStates={packRunMap.get(pack.name) || []}
                 onRun={() => launchPack(pack.name)}
+                onView={() => setDetailPack(pack)}
                 onEditCase={(id) => setEditingCaseId(id)}
               />
             ))}
@@ -317,33 +309,73 @@ export function BenchPage() {
 
         {summaries.length > 0 && (
           <section className="mt-10 space-y-6">
-            <h2 className="text-lg font-semibold tracking-tight">Reports</h2>
-            <AnalysisCards runs={summaries} />
-            {summaries.length >= 2 && (
-              <Card>
-                <CardContent className="p-6">
-                  <h3 className="mb-3 text-base font-semibold">Score Trend</h3>
-                  <TrendChart runs={summaries} />
-                </CardContent>
-              </Card>
-            )}
-            <Card>
-              <CardContent className="p-6">
-                <h3 className="mb-3 text-base font-semibold">Capability Heatmap</h3>
-                <Heatmap runs={summaries} />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-6">
-                <h3 className="mb-3 text-base font-semibold">All Runs</h3>
-                <RunTable runs={summaries} />
-              </CardContent>
-            </Card>
+            <h2 className="text-lg font-semibold tracking-tight">{t("bench.reports")}</h2>
+            <Tabs value={reportTab} onValueChange={setReportTab}>
+              <TabsList>
+                <TabsTrigger value="overview">{t("bench.overview")}</TabsTrigger>
+                <TabsTrigger value="heatmap">{t("bench.heatmap")}</TabsTrigger>
+                <TabsTrigger value="runs">{t("bench.allRuns")}</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="overview">
+                <div className="space-y-6">
+                  <AnalysisCards runs={summaries} />
+                  {summaries.length >= 2 && (
+                    <Card>
+                      <CardContent className="p-6">
+                        <h3 className="mb-3 text-base font-semibold">
+                          {t("bench.scoreTrend")}
+                        </h3>
+                        <TrendChart runs={summaries} />
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="heatmap">
+                <Card>
+                  <CardContent className="p-6">
+                    <h3 className="mb-3 text-base font-semibold">
+                      {t("bench.capabilityHeatmap")}
+                    </h3>
+                    <Heatmap runs={summaries} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="runs">
+                <Card>
+                  <CardContent className="p-6">
+                    <h3 className="mb-3 text-base font-semibold">{t("bench.allRuns")}</h3>
+                    <RunTable runs={summaries} onSelectRun={setSelectedRunId} />
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </section>
         )}
       </main>
 
       <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {/* Sheet stack: PackDetail (z-50) → CaseEditor (z-51) on top.
+          Closing the editor reveals the pack detail underneath. */}
+      <PackDetail
+        pack={detailPack}
+        runStates={
+          detailPack ? packRunMap.get(detailPack.name) || [] : []
+        }
+        onClose={() => setDetailPack(null)}
+        onEditCase={setEditingCaseId}
+        onRun={() => {
+          if (detailPack) launchPack(detailPack.name);
+          setDetailPack(null);
+        }}
+      />
+      <RunDetail
+        runId={selectedRunId}
+        onClose={() => setSelectedRunId(null)}
+      />
       <CaseEditor
         caseId={editingCaseId}
         onClose={() => setEditingCaseId(null)}
@@ -357,27 +389,29 @@ function BenchPackCard({
   pack,
   runStates,
   onRun,
+  onView,
   onEditCase,
 }: {
   pack: PackInfo;
   runStates: PackRunState[];
   onRun: () => void;
+  onView: () => void;
   onEditCase: (id: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const t = useT();
   const hasRunning = runStates.some(
     (r) => r.status === "running" || r.status === "pending"
   );
   const hasCompleted = runStates.some((r) => r.status === "completed");
 
   return (
-    <Card className="group relative flex min-h-[220px] flex-col overflow-hidden">
+    <Card
+      className="group relative flex min-h-[220px] flex-col overflow-hidden cursor-pointer transition-colors hover:bg-muted/40"
+      onClick={onView}
+    >
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary/60 to-primary/20" />
 
-      <CardContent
-        className="flex flex-1 flex-col p-5 cursor-pointer"
-        onClick={() => setExpanded((e) => !e)}
-      >
+      <CardContent className="flex flex-1 flex-col p-5">
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <Box className="h-5 w-5" />
@@ -391,17 +425,34 @@ function BenchPackCard({
           {pack.name}
         </h3>
         <p className="mb-3 flex-1 text-xs leading-relaxed text-muted-foreground">
-          {PACK_DESC[pack.name] || `${pack.cases.length} cases`}
+          {t("bench.cases", { count: pack.cases.length })}
         </p>
 
         <div className="mb-3 flex flex-wrap gap-1">
           {pack.capabilities.slice(0, 3).map((cap) => (
-            <Badge key={cap} variant="outline" className="text-[10px]">
+            <Badge
+              key={cap}
+              variant="outline"
+              className="text-[10px] cursor-pointer hover:bg-muted"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(cap);
+              }}
+            >
               {cap}
             </Badge>
           ))}
           {pack.capabilities.length > 3 && (
-            <Badge variant="outline" className="text-[10px]">
+            <Badge
+              variant="outline"
+              className="text-[10px] cursor-pointer hover:bg-muted"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(
+                  pack.capabilities.slice(3).join(", ")
+                );
+              }}
+            >
               +{pack.capabilities.length - 3}
             </Badge>
           )}
@@ -420,8 +471,14 @@ function BenchPackCard({
                     <span className="font-medium capitalize">{rs.adapter}</span>
                     <span className="tabular-nums text-muted-foreground">
                       {rs.status === "completed"
-                        ? `${rs.progress.passed}/${rs.progress.total} passed`
-                        : `${rs.progress.completed}/${rs.progress.total}`}
+                        ? t("pack.passed", {
+                            passed: rs.progress.passed,
+                            total: rs.progress.total,
+                          })
+                        : t("pack.progress", {
+                            completed: rs.progress.completed,
+                            total: rs.progress.total,
+                          })}
                     </span>
                   </div>
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -439,40 +496,36 @@ function BenchPackCard({
           </div>
         )}
 
-        <div className="mt-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="mt-auto flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={(e) => {
+              e.stopPropagation();
+              onView();
+            }}
+          >
+            {t("common.view")}
+          </Button>
           <Button
             variant={!hasRunning && !hasCompleted ? "default" : "outline"}
             size="sm"
-            className="w-full"
-            onClick={onRun}
+            className="flex-1"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRun();
+            }}
             disabled={hasRunning}
           >
             <PlayCircle className="h-3.5 w-3.5" />
-            {hasRunning ? "Running..." : hasCompleted ? "Run Again" : "Run"}
+            {hasRunning
+              ? t("common.running")
+              : hasCompleted
+                ? t("common.runAgain")
+                : t("common.run")}
           </Button>
         </div>
-
-        {expanded && (
-          <div className="mt-3 border-t pt-3" onClick={(e) => e.stopPropagation()}>
-            <h4 className="mb-2 text-xs font-semibold text-muted-foreground">
-              Cases ({pack.cases.length})
-            </h4>
-            <div className="max-h-48 space-y-1 overflow-y-auto">
-              {pack.cases.map((c) => (
-                <div
-                  key={c.id}
-                  className="rounded px-2 py-1.5 text-xs hover:bg-muted/50 cursor-pointer"
-                  onClick={() => onEditCase(c.id)}
-                >
-                  <div className="font-medium text-foreground">{c.title}</div>
-                  <div className="text-[10px] text-muted-foreground">
-                    {c.type} · {c.capability.join(", ")}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   );

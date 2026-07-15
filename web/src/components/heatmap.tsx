@@ -36,7 +36,7 @@ export function Heatmap({ runs }: HeatmapProps) {
               className="flex-1 text-center text-[10px] text-muted-foreground truncate px-1"
               title={r.run_id}
             >
-              {r.adapter}
+              {r.adapter_display || r.adapter}
             </div>
           ))}
         </div>

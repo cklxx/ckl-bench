@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { RunSummary } from "@/lib/types";
 import { formatPercent } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface AnalysisCardsProps {
   runs: RunSummary[];
@@ -14,7 +15,10 @@ interface AnalysisItem {
   variant: "success" | "destructive" | "warning" | "default";
 }
 
-function analyze(runs: RunSummary[]): AnalysisItem[] {
+function analyze(
+  runs: RunSummary[],
+  t: (key: string, params?: Record<string, string | number>) => string
+): AnalysisItem[] {
   if (runs.length === 0) return [];
 
   const latest = runs[runs.length - 1];
@@ -29,18 +33,26 @@ function analyze(runs: RunSummary[]): AnalysisItem[] {
     if (sorted.length > 0) {
       const [name, bucket] = sorted[0];
       items.push({
-        title: "Strongest Capability",
+        title: t("analysis.strongest"),
         value: name,
-        description: `${formatPercent(bucket.score)} (${bucket.passed}/${bucket.count})`,
+        description: t("analysis.strongestDesc", {
+          score: formatPercent(bucket.score),
+          passed: bucket.passed,
+          count: bucket.count,
+        }),
         variant: "success",
       });
     }
     if (sorted.length > 1) {
       const [name, bucket] = sorted[sorted.length - 1];
       items.push({
-        title: "Weakest Capability",
+        title: t("analysis.weakest"),
         value: name,
-        description: `${formatPercent(bucket.score)} (${bucket.passed}/${bucket.count})`,
+        description: t("analysis.strongestDesc", {
+          score: formatPercent(bucket.score),
+          passed: bucket.passed,
+          count: bucket.count,
+        }),
         variant: "destructive",
       });
     }
@@ -53,16 +65,22 @@ function analyze(runs: RunSummary[]): AnalysisItem[] {
     const pct = Math.round(delta * 1000) / 10;
     if (pct > 0) {
       items.push({
-        title: "Most Improved",
+        title: t("analysis.mostImproved"),
         value: `+${pct.toFixed(1)}%`,
-        description: `vs previous run (${formatPercent(prev.score)} → ${formatPercent(latest.score)})`,
+        description: t("analysis.vsPrev", {
+          prev: formatPercent(prev.score),
+          curr: formatPercent(latest.score),
+        }),
         variant: "success",
       });
     } else if (pct < 0) {
       items.push({
-        title: "Regressed",
+        title: t("analysis.regressed"),
         value: `${pct.toFixed(1)}%`,
-        description: `vs previous run (${formatPercent(prev.score)} → ${formatPercent(latest.score)})`,
+        description: t("analysis.vsPrev", {
+          prev: formatPercent(prev.score),
+          curr: formatPercent(latest.score),
+        }),
         variant: "destructive",
       });
     }
@@ -70,9 +88,12 @@ function analyze(runs: RunSummary[]): AnalysisItem[] {
 
   // Overall score
   items.push({
-    title: "Overall Score",
+    title: t("analysis.overall"),
     value: formatPercent(latest.score),
-    description: `${latest.passed}/${latest.total} cases passed`,
+    description: t("analysis.overallDesc", {
+      passed: latest.passed,
+      total: latest.total,
+    }),
     variant: "default",
   });
 
@@ -80,7 +101,8 @@ function analyze(runs: RunSummary[]): AnalysisItem[] {
 }
 
 export function AnalysisCards({ runs }: AnalysisCardsProps) {
-  const items = analyze(runs);
+  const t = useT();
+  const items = analyze(runs, t);
   if (items.length === 0) return null;
 
   return (

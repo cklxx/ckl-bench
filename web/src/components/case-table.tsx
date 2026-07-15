@@ -8,29 +8,25 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import type { Result } from "@/lib/types";
-import { formatPercent, formatCost, shortId } from "@/lib/utils";
-
-function scoreVariant(score: number): "success" | "warning" | "destructive" {
-  if (score >= 0.8) return "success";
-  if (score >= 0.5) return "warning";
-  return "destructive";
-}
+import { formatPercent, formatCost, shortId, scoreVariant } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface CaseTableProps {
   results: Result[];
 }
 
 export function CaseTable({ results }: CaseTableProps) {
+  const t = useT();
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Case</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="text-right">Score</TableHead>
-          <TableHead>Capabilities</TableHead>
-          <TableHead className="text-right">Cost</TableHead>
-          <TableHead className="text-right">Tokens</TableHead>
+          <TableHead>{t("caseTable.case")}</TableHead>
+          <TableHead>{t("caseTable.status")}</TableHead>
+          <TableHead className="text-right">{t("caseTable.score")}</TableHead>
+          <TableHead>{t("caseTable.capabilities")}</TableHead>
+          <TableHead className="text-right">{t("caseTable.cost")}</TableHead>
+          <TableHead className="text-right">{t("caseTable.tokens")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -41,7 +37,7 @@ export function CaseTable({ results }: CaseTableProps) {
             </TableCell>
             <TableCell>
               <Badge variant={r.passed ? "success" : "destructive"}>
-                {r.passed ? "PASS" : "FAIL"}
+                {r.passed ? t("caseTable.pass") : t("caseTable.fail")}
               </Badge>
             </TableCell>
             <TableCell className="text-right font-variant-numeric">
@@ -52,7 +48,15 @@ export function CaseTable({ results }: CaseTableProps) {
             <TableCell>
               <div className="flex flex-wrap gap-1">
                 {r.capability?.map((c) => (
-                  <Badge key={c} variant="muted" className="text-[10px]">
+                  <Badge
+                    key={c}
+                    variant="muted"
+                    className="text-[10px] cursor-pointer hover:bg-muted"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigator.clipboard.writeText(c);
+                    }}
+                  >
                     {c}
                   </Badge>
                 ))}

@@ -41,6 +41,7 @@ export interface Result {
 export interface RunSummary {
   run_id: string;
   adapter: string;
+  adapter_display?: string;
   judge?: string;
   total: number;
   passed: number;

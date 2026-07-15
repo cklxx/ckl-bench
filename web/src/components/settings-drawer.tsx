@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { X, Save, CheckCircle2, XCircle, Loader2, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface SettingsDrawerProps {
   open: boolean;
@@ -19,6 +20,7 @@ const ADAPTER_DEFS = [
 ];
 
 export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
+  const t = useT();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
@@ -120,7 +122,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
       if (e?.name === "AbortError") {
         setTestResults((prev) => ({
           ...prev,
-          [key]: { ok: false, output: "", error: "cancelled by user" },
+          [key]: { ok: false, output: "", error: t("settings.testCancelled") },
         }));
       } else {
         setTestResults((prev) => ({
@@ -148,7 +150,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
       <div className="flex-1 bg-black/30" onClick={onClose} />
       <div className="flex w-[420px] flex-col bg-background shadow-lg">
         <div className="flex h-12 items-center justify-between border-b px-4">
-          <h2 className="text-base font-semibold">Settings</h2>
+          <h2 className="text-base font-semibold">{t("settings.title")}</h2>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-4 w-4" />
           </Button>
@@ -163,9 +165,9 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
 
           {/* Active adapters selection */}
           <section>
-            <h3 className="mb-2 text-sm font-semibold">Active Adapters</h3>
+            <h3 className="mb-2 text-sm font-semibold">{t("settings.activeAdapters")}</h3>
             <p className="mb-2 text-xs text-muted-foreground">
-              Select which adapters to benchmark side-by-side.
+              {t("settings.activeDesc")}
             </p>
             <div className="space-y-2">
               {ADAPTER_DEFS.map((def) => {
@@ -204,11 +206,11 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                 <h3 className="mb-2 text-sm font-semibold">{def.label}</h3>
                 <div className="space-y-2">
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">Command</label>
+                    <label className="text-xs font-medium text-muted-foreground">{t("settings.command")}</label>
                     <textarea
                       value={config.command || ""}
                       onChange={(e) => updateAdapter(def.key, "command", e.target.value)}
-                      placeholder={"dsx\n# or any bash command"}
+                      placeholder={t("settings.commandPh")}
                       rows={3}
                       className="w-full rounded-md bg-muted/50 px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring border border-input resize-y"
                     />
@@ -216,16 +218,16 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                   {def.key === "claude-code" && (
                     <>
                       <div className="space-y-1">
-                        <label className="text-xs font-medium text-muted-foreground">API Key</label>
+                        <label className="text-xs font-medium text-muted-foreground">{t("settings.apiKey")}</label>
                         <Input
                           type="password"
                           value={config.api_key || ""}
                           onChange={(e) => updateAdapter(def.key, "api_key", e.target.value)}
-                          placeholder="sk-..."
+                          placeholder={t("settings.apiKeyPh")}
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-medium text-muted-foreground">Base URL</label>
+                        <label className="text-xs font-medium text-muted-foreground">{t("settings.baseUrl")}</label>
                         <Input
                           value={config.base_url || ""}
                           onChange={(e) => updateAdapter(def.key, "base_url", e.target.value)}
@@ -235,11 +237,11 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                     </>
                   )}
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-muted-foreground">Model</label>
+                    <label className="text-xs font-medium text-muted-foreground">{t("settings.model")}</label>
                     <Input
                       value={config.model || ""}
                       onChange={(e) => updateAdapter(def.key, "model", e.target.value)}
-                      placeholder="e.g. deepseek-v4-flash"
+                      placeholder={t("settings.modelPh")}
                     />
                   </div>
 
@@ -261,8 +263,8 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                         <Play className="h-3.5 w-3.5" />
                       )}
                       {isTesting
-                        ? `Testing${elapsed > 0 ? ` (${elapsed}s)` : ""}...`
-                        : "Test"}
+                        ? `${t("common.testing")}${elapsed > 0 ? ` (${elapsed}s)` : ""}`
+                        : t("common.test")}
                     </Button>
                     {isTesting && (
                       <Button
@@ -271,7 +273,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                         onClick={handleCancelTest}
                         className="text-xs text-muted-foreground"
                       >
-                        Cancel
+                        {t("common.cancel")}
                       </Button>
                     )}
                   </div>
@@ -279,7 +281,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                   {/* Show what command is being tested */}
                   {isTesting && config.command && (
                     <p className="text-[11px] text-muted-foreground font-mono break-all">
-                      Testing: {config.command}
+                      {t("settings.testingCommand", { command: config.command })}
                     </p>
                   )}
 
@@ -294,7 +296,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                       )}
                     >
                       {testResult.ok
-                        ? testResult.output || "OK — command responded successfully"
+                        ? testResult.output || t("settings.testOk")
                         : testResult.error}
                     </div>
                   )}
@@ -305,10 +307,10 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
 
           {/* Default run options */}
           <section>
-            <h3 className="mb-2 text-sm font-semibold">Default Options</h3>
+            <h3 className="mb-2 text-sm font-semibold">{t("settings.defaultOptions")}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Repeat</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("settings.repeat")}</label>
                 <Input
                   type="number"
                   min={1}
@@ -317,7 +319,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Concurrency</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("settings.concurrency")}</label>
                 <Input
                   type="number"
                   min={1}
@@ -326,7 +328,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Seed</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("settings.seed")}</label>
                 <Input
                   type="number"
                   value={settings?.defaults.seed ?? 0}
@@ -334,11 +336,11 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground">Judge</label>
+                <label className="text-xs font-medium text-muted-foreground">{t("settings.judge")}</label>
                 <Input
                   value={settings?.defaults.judge ?? ""}
                   onChange={(e) => updateDefault("judge", e.target.value)}
-                  placeholder="e.g. deepseekv4 (optional)"
+                  placeholder={t("settings.judgePh")}
                 />
               </div>
             </div>
@@ -353,7 +355,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
             ) : (
               <Save className="h-4 w-4" />
             )}
-            {saving ? "Saving..." : "Save Settings"}
+            {saving ? t("settings.saving") : t("settings.save")}
           </Button>
         </div>
       </div>

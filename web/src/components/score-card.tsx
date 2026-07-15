@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn, formatPercent } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface ScoreCardProps {
   title: string;
@@ -29,6 +30,7 @@ export function ScoreCard({
   ci,
   variant = "default",
 }: ScoreCardProps) {
+  const t = useT();
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -50,7 +52,10 @@ export function ScoreCard({
         )}
         {ci && (
           <p className="mt-1 text-xs text-muted-foreground font-variant-numeric">
-            95% CI: [{formatPercent(ci[0])}, {formatPercent(ci[1])}]
+            {t("common.ci", {
+              low: formatPercent(ci[0]),
+              high: formatPercent(ci[1]),
+            })}
           </p>
         )}
       </CardContent>

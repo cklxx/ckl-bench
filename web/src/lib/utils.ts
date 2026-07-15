@@ -24,3 +24,11 @@ export function formatCost(value: number): string {
 export function shortId(value: string, len = 16): string {
   return value.length > len ? value.slice(0, len) + "…" : value;
 }
+
+export function scoreVariant(
+  score: number
+): "success" | "warning" | "destructive" {
+  if (score >= 0.8) return "success";
+  if (score >= 0.5) return "warning";
+  return "destructive";
+}

@@ -8,41 +8,42 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import type { RunSummary } from "@/lib/types";
-import { formatPercent, formatCost, formatNumber, shortId } from "@/lib/utils";
-
-function scoreVariant(score: number): "success" | "warning" | "destructive" {
-  if (score >= 0.8) return "success";
-  if (score >= 0.5) return "warning";
-  return "destructive";
-}
+import { formatPercent, formatCost, formatNumber, shortId, scoreVariant } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface RunTableProps {
   runs: RunSummary[];
+  onSelectRun?: (runId: string) => void;
 }
 
-export function RunTable({ runs }: RunTableProps) {
+export function RunTable({ runs, onSelectRun }: RunTableProps) {
+  const t = useT();
   return (
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Run ID</TableHead>
-          <TableHead>Adapter</TableHead>
-          <TableHead className="text-right">Score</TableHead>
-          <TableHead className="text-right">Passed</TableHead>
-          <TableHead className="text-right">Total</TableHead>
-          <TableHead className="text-right">Pass Rate</TableHead>
-          <TableHead className="text-right">Cost</TableHead>
-          <TableHead className="text-right">Tokens</TableHead>
+          <TableHead>{t("runTable.runId")}</TableHead>
+          <TableHead>{t("runTable.adapter")}</TableHead>
+          <TableHead className="text-right">{t("runTable.score")}</TableHead>
+          <TableHead className="text-right">{t("runTable.passed")}</TableHead>
+          <TableHead className="text-right">{t("runTable.total")}</TableHead>
+          <TableHead className="text-right">{t("runTable.passRate")}</TableHead>
+          <TableHead className="text-right">{t("runTable.cost")}</TableHead>
+          <TableHead className="text-right">{t("runTable.tokens")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {runs.map((r) => (
-          <TableRow key={r.run_id}>
+          <TableRow
+            key={r.run_id}
+            className={onSelectRun ? "cursor-pointer" : ""}
+            onClick={onSelectRun ? () => onSelectRun(r.run_id) : undefined}
+          >
             <TableCell className="font-medium font-variant-numeric">
               {shortId(r.run_id)}
             </TableCell>
             <TableCell>
-              <Badge variant="secondary">{r.adapter}</Badge>
+              <Badge variant="secondary">{r.adapter_display || r.adapter}</Badge>
             </TableCell>
             <TableCell className="text-right font-variant-numeric">
               <Badge variant={scoreVariant(r.score)}>

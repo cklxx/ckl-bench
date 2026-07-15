@@ -8,15 +8,11 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import type { RunSummary } from "@/lib/types";
-import { formatPercent, formatNumber } from "@/lib/utils";
-
-function scoreVariant(score: number): "success" | "warning" | "destructive" {
-  if (score >= 0.8) return "success";
-  if (score >= 0.5) return "warning";
-  return "destructive";
-}
+import { formatPercent, formatNumber, scoreVariant } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 export function CapabilityTable({ summary }: { summary: RunSummary }) {
+  const t = useT();
   const caps = summary.by_capability;
   if (!caps) return null;
 
@@ -26,11 +22,11 @@ export function CapabilityTable({ summary }: { summary: RunSummary }) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Capability</TableHead>
-          <TableHead className="text-right">Score</TableHead>
-          <TableHead className="text-right">Passed</TableHead>
-          <TableHead className="text-right">Total</TableHead>
-          <TableHead className="text-right">Pass Rate</TableHead>
+          <TableHead>{t("capabilityTable.capability")}</TableHead>
+          <TableHead className="text-right">{t("capabilityTable.score")}</TableHead>
+          <TableHead className="text-right">{t("capabilityTable.passed")}</TableHead>
+          <TableHead className="text-right">{t("capabilityTable.total")}</TableHead>
+          <TableHead className="text-right">{t("capabilityTable.passRate")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>

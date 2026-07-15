@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useT } from "@/lib/i18n";
 
 export function ThemeToggle() {
+  const t = useT();
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof window === "undefined") return "light";
     const stored = localStorage.getItem("ckl-bench-theme") as
@@ -26,7 +28,7 @@ export function ThemeToggle() {
       variant="ghost"
       size="icon"
       onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-      aria-label="Toggle theme"
+      aria-label={t("theme.toggle")}
     >
       {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
     </Button>
