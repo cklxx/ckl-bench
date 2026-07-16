@@ -1,0 +1,59 @@
+ckl_bench/core/compare.py
+  s_07e7939a36f320::t_e3d8dbf16e0950 103-104
+web/src/components/case-table.tsx
+  s_177c3908b95010::t_a26228490e0fc9 11,27,41-47
+web/src/lib/i18n.tsx
+  s_2a91c3df56f562::t_f9b9ce88aada28 114-117,167,205-207,211,227-233,373-376,426,464-466,470,486-492,568
+web/src/lib/types.ts
+  s_07e7939a36f320::t_4abffda5de5668 27,47-48,57,104-105,216-217
+web/src/pages/diff-page.tsx
+  s_07e7939a36f320::t_d502be4db8997d 13,58-60,152-158
+web/src/test/comparison-table.test.tsx
+  s_a7a2c66bbfefbc::t_2cf9fd11730f1f 1-141
+web/src/test/diff-significance.test.tsx
+  s_a7a2c66bbfefbc::t_a110d980ee6f01 1-66
+web/src/test/failure-analysis.test.tsx
+  s_a7a2c66bbfefbc::t_5a866c2969c15e 1-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2bd766a9cbdf8baa0dd2a93eab1490033ea2a9c0",
+  "prompts": {},
+  "sessions": {
+    "s_07e7939a36f320": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0799cc5cc5a8e113",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    },
+    "s_177c3908b95010": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a8833ead47444cc85",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    },
+    "s_2a91c3df56f562": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acfbfdf26388c1b1e",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    },
+    "s_a7a2c66bbfefbc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-afe351a5ad8ef3cff",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
