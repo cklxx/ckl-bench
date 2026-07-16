@@ -63,3 +63,14 @@ export function formatScorePerMTokens(
   if (score == null || tokens == null || tokens <= 0) return "—";
   return (score / (tokens / 1_000_000)).toFixed(2);
 }
+
+/** Badge variant for a difficulty level (medium < hard < extreme < frontier). */
+export function difficultyVariant(
+  d: string | null | undefined
+): "destructive" | "warning" | "success" | "outline" {
+  if (d === "extreme") return "destructive";
+  if (d === "hard") return "destructive";
+  if (d === "medium") return "warning";
+  if (d === "frontier") return "outline";
+  return "outline";
+}

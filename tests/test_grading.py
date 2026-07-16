@@ -4,8 +4,26 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from ckl_bench.adapters.base import GenerateResponse
 from ckl_bench.core.cases import EvalCase
-from ckl_bench.core.grading import grade_case
+from ckl_bench.core.grading import _build_quality_criteria, grade_case
+
+
+class StaticAdapter:
+    """Adapter that returns a fixed JSON response."""
+
+    name = "static"
+    model = "fake"
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.calls = 0
+        self.last_messages = None
+
+    def generate(self, request):
+        self.calls += 1
+        self.last_messages = request.messages
+        return GenerateResponse(text=self.text)
 
 
 def make_case(expectations: list[dict], *, metadata: dict | None = None, input_payload: dict | None = None) -> EvalCase:
@@ -164,6 +182,45 @@ class GradingTests(unittest.TestCase):
                 {"kind": "code_test", "test": "from lib import two\nassert two() == 2\n", "timeout_s": 10}
             ])
             self.assertTrue(grade_case(case, "", workspace).passed)
+
+    def test_quality_rubric_covers_all_seven_dimensions(self) -> None:
+        criteria = _build_quality_criteria(None)
+        for zh in ("清晰", "连贯", "简洁", "具体", "准确", "完整", "得体"):
+            self.assertIn(zh, criteria)
+
+    def test_quality_dimensions_filter(self) -> None:
+        criteria = _build_quality_criteria(["clear", "accurate"])
+        self.assertIn("清晰", criteria)
+        self.assertIn("准确", criteria)
+        self.assertNotIn("连贯", criteria)
+
+    def test_quality_expectation_uses_judge(self) -> None:
+        judge = StaticAdapter('{"score":0.9,"passed":true,"reason":"good"}')
+        case = make_case(
+            [{"kind": "quality", "threshold": 0.7}],
+            metadata={"pass_threshold": 0.7},
+        )
+        grade = grade_case(case, "A clear, accurate response.", None, judge_adapter=judge)
+        self.assertTrue(grade.passed)
+        self.assertAlmostEqual(grade.score, 0.9)
+        self.assertEqual(judge.calls, 1)
+        # The judge prompt must carry the quality rubric.
+        prompt = judge.last_messages[-1]["content"]
+        self.assertIn("清晰", prompt)
+        self.assertIn("得体", prompt)
+
+    def test_quality_expectation_without_judge_fails_gracefully(self) -> None:
+        case = make_case([{"kind": "quality"}])
+        grade = grade_case(case, "response", None)
+        self.assertFalse(grade.passed)
+        self.assertIn("requires --judge", grade.checks[0].detail)
+
+    def test_writing_quality_alias(self) -> None:
+        judge = StaticAdapter('{"score":0.5,"passed":false,"reason":"vague"}')
+        case = make_case([{"kind": "writing_quality", "threshold": 0.7}])
+        grade = grade_case(case, "response", None, judge_adapter=judge)
+        self.assertFalse(grade.passed)
+        self.assertEqual(judge.calls, 1)
 
 
 if __name__ == "__main__":

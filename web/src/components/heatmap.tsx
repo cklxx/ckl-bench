@@ -26,14 +26,14 @@ export function Heatmap({ runs }: HeatmapProps) {
 
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[480px]">
+      <div className="inline-block">
         {/* Header row with run labels */}
         <div className="flex gap-1 mb-1">
           <div className="w-28 shrink-0" />
           {runs.map((r) => (
             <div
               key={r.run_id}
-              className="flex-1 text-center text-[10px] text-muted-foreground truncate px-1"
+              className="w-16 shrink-0 text-center text-[10px] text-muted-foreground truncate px-1"
               title={r.run_id}
             >
               {r.adapter_display || r.adapter}
@@ -53,7 +53,7 @@ export function Heatmap({ runs }: HeatmapProps) {
                 <div
                   key={r.run_id}
                   className={cn(
-                    "flex-1 h-7 rounded-sm flex items-center justify-center text-[10px] font-semibold text-white",
+                    "w-16 shrink-0 h-7 rounded-sm flex items-center justify-center text-[10px] font-semibold text-white",
                     heatColor(score)
                   )}
                   title={`${cap}: ${(score * 100).toFixed(1)}%`}

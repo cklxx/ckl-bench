@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import type { Result } from "@/lib/types";
-import { formatPercent, formatCost, shortId, scoreVariant } from "@/lib/utils";
+import { formatPercent, formatCost, shortId, scoreVariant, difficultyVariant } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { useCopyToast } from "@/lib/use-copy-toast";
 
@@ -24,6 +24,7 @@ export function CaseTable({ results }: CaseTableProps) {
       <TableHeader>
         <TableRow>
           <TableHead>{t("caseTable.case")}</TableHead>
+          <TableHead>{t("caseTable.difficulty")}</TableHead>
           <TableHead>{t("caseTable.status")}</TableHead>
           <TableHead className="text-right">{t("caseTable.score")}</TableHead>
           <TableHead>{t("caseTable.capabilities")}</TableHead>
@@ -36,6 +37,13 @@ export function CaseTable({ results }: CaseTableProps) {
           <TableRow key={`${r.case_id}-${i}`}>
             <TableCell className="font-medium font-variant-numeric">
               {shortId(r.case_id, 20)}
+            </TableCell>
+            <TableCell>
+              {r.difficulty ? (
+                <Badge variant={difficultyVariant(r.difficulty)}>{r.difficulty}</Badge>
+              ) : (
+                "—"
+              )}
             </TableCell>
             <TableCell>
               <Badge variant={r.passed ? "success" : "destructive"}>

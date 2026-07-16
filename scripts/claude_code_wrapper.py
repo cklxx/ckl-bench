@@ -23,7 +23,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _common import build_prompt, extract_text, prepare_workspace, sync_workspace
+from _common import (
+    build_prompt,
+    diagnose_stderr,
+    extract_text,
+    prepare_workspace,
+    sync_workspace,
+)
 
 KEY_ENVS = ("CKL_CLAUDE_API_KEY", "ANTHROPIC_API_KEY", "DSV4_API_KEY", "DEEPSEEK_API_KEY")
 BASE_URL_ENVS = ("CKL_CLAUDE_ANTHROPIC_BASE_URL", "ANTHROPIC_BASE_URL", "DSV4_ANTHROPIC_BASE_URL")
@@ -60,7 +66,7 @@ def main() -> int:
         "returncode": completed.returncode,
         "workspace": str(workspace),
         "usage": usage,
-        "stderr_tail": completed.stderr.strip()[-2000:],
+        "stderr_tail": diagnose_stderr(completed.stderr.strip()[-2000:]),
     }
     print(json.dumps(output, ensure_ascii=True))
     return 0 if completed.returncode == 0 else completed.returncode

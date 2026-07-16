@@ -21,6 +21,7 @@ from typing import Any
 from ckl_bench.adapters import build_adapter
 from ckl_bench.core.cache import ResponseCache
 from ckl_bench.core.cases import CaseValidationError, EvalCase, load_cases
+from ckl_bench.core.db import RunDB
 from ckl_bench.core.runner import RunOptions, run_cases
 
 _log = logging.getLogger(__name__)
@@ -44,6 +45,18 @@ def collect_runs(runs_dir: Path) -> list[dict[str, Any]]:
     return runs
 
 
+def _resolve(target: str | None) -> Any | None:
+    """Build an adapter for *target*, or None for 'same'/'self'/empty."""
+    if not target or target in {"same", "self"}:
+        return None
+    from ckl_bench.core.providers import load_provider
+
+    provider = load_provider(target)
+    if provider is None:
+        return None
+    return build_adapter(provider["adapter"], dict(provider.get("config", {})))
+
+
 @dataclass
 class RunState:
     run_id: str
@@ -59,7 +72,12 @@ class RunState:
 class RunManager:
     """Launch and track evaluation runs with real-time progress broadcast."""
 
-    def __init__(self, runs_dir: Path, cases_dir: Path) -> None:
+    def __init__(
+        self,
+        runs_dir: Path,
+        cases_dir: Path,
+        db_path: Path | None = None,
+    ) -> None:
         self._runs_dir = runs_dir
         self._cases_dir = cases_dir
         self._lock = threading.Lock()
@@ -67,6 +85,12 @@ class RunManager:
         self._threads: dict[str, threading.Thread] = {}
         self._cancel_flags: dict[str, threading.Event] = {}
         self._listeners: list[Callable[[dict[str, Any]], None]] = []
+        # SQLite persistence: query-optimized cache over the JSON files on disk
+        # (which remain the canonical export).  Rebuild from disk on first run.
+        self._db: RunDB | None = None
+        if db_path is not None:
+            self._db = RunDB(db_path)
+            self._db.rebuild_from_disk(runs_dir)
 
     # -- Listener management ------------------------------------------------
 
@@ -103,6 +127,8 @@ class RunManager:
         concurrency: int = 1,
         seed: int = 0,
         judge_target: str | None = None,
+        reviewer_target: str | None = None,
+        verifier_target: str | None = None,
         cache_dir: str | None = None,
         run_name: str | None = None,
     ) -> str:
@@ -124,16 +150,11 @@ class RunManager:
         config = dict(adapter_config or {})
         adapter = build_adapter(adapter_name, config)
 
-        # Judge adapter (for judge/llm_judge expectations).
-        judge_adapter = None
-        if judge_target and judge_target not in {"same", "self"}:
-            from ckl_bench.core.providers import load_provider
-
-            provider = load_provider(judge_target)
-            if provider is not None:
-                judge_adapter = build_adapter(
-                    provider["adapter"], dict(provider.get("config", {}))
-                )
+        # Judge/reviewer/verifier adapters (reviewer & verifier are optional
+        # adversarial-pipeline stages that challenge and finalise the judge).
+        judge_adapter = _resolve(judge_target)
+        reviewer_adapter = _resolve(reviewer_target)
+        verifier_adapter = _resolve(verifier_target)
 
         # Cache (stateless requests only).
         cache = ResponseCache(Path(cache_dir)) if cache_dir else None
@@ -154,6 +175,10 @@ class RunManager:
             seed=seed,
             judge_adapter=judge_adapter,
             judge_name=judge_target,
+            reviewer_adapter=reviewer_adapter,
+            reviewer_name=reviewer_target,
+            verifier_adapter=verifier_adapter,
+            verifier_name=verifier_target,
             cache=cache,
             on_progress=lambda event: self._on_progress(run_id, event),
         )
@@ -167,6 +192,9 @@ class RunManager:
         with self._lock:
             self._threads[run_id] = thread
         thread.start()
+        # Persist initial run state so the dashboard sees it immediately.
+        if self._db is not None:
+            self._db.upsert_run(self._state_to_dict(state))
         return run_id
 
     def _run_worker(
@@ -179,6 +207,7 @@ class RunManager:
     ) -> None:
         state = self._states[run_id]
         state.status = "running"
+        result: dict[str, Any] | None = None
         try:
             result = run_cases(cases, adapter, options)
             if cancel_flag.is_set():
@@ -195,6 +224,11 @@ class RunManager:
             _log.exception("run %s failed", run_id)
         finally:
             state.completed_at = time.time()
+            # Persist final state and results to SQLite.
+            if self._db is not None:
+                self._db.upsert_run(self._state_to_dict(state))
+                if result is not None:
+                    self._db.replace_results(run_id, result.get("results", []))
             self._broadcast(
                 {
                     "type": "run_finished",
@@ -239,23 +273,21 @@ class RunManager:
     # -- Query API ----------------------------------------------------------
 
     def list_runs(self) -> list[dict[str, Any]]:
-        """Return all runs: in-memory active runs plus completed runs on disk."""
+        """Return all runs: in-memory active runs plus completed runs from DB."""
         with self._lock:
             active = {
                 run_id: self._state_to_dict(state)
                 for run_id, state in self._states.items()
             }
-        # Completed runs from disk (merged with active so we don't double up).
-        for run in collect_runs(self._runs_dir):
+        # Completed runs from SQLite (or disk as fallback) merged with active.
+        if self._db is not None:
+            completed = self._db.list_runs()
+        else:
+            completed = collect_runs(self._runs_dir)
+        for run in completed:
             rid = run["run_id"]
             if rid not in active:
-                active[rid] = {
-                    "run_id": rid,
-                    "status": "completed",
-                    "progress": {},
-                    "summary": run["summary"],
-                    "error": None,
-                }
+                active[rid] = run
         return sorted(active.values(), key=lambda r: r.get("run_id", ""), reverse=True)
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
@@ -264,7 +296,11 @@ class RunManager:
             state = self._states.get(run_id)
             if state is not None:
                 return self._state_to_dict(state)
-        # Fall back to disk.
+        # Fall back to SQLite, then disk.
+        if self._db is not None:
+            run = self._db.get_run(run_id)
+            if run is not None:
+                return run
         for run in collect_runs(self._runs_dir):
             if run["run_id"] == run_id:
                 return {
@@ -277,7 +313,11 @@ class RunManager:
         return None
 
     def get_run_results(self, run_id: str) -> list[dict[str, Any]]:
-        """Load results.jsonl for a completed run."""
+        """Load results for a completed run (from SQLite, then disk)."""
+        if self._db is not None:
+            results = self._db.get_results(run_id)
+            if results:
+                return results
         results_path = self._runs_dir / run_id / "results.jsonl"
         if not results_path.exists():
             return []

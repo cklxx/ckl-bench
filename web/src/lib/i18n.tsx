@@ -111,6 +111,10 @@ const translations: Record<Locale, Record<string, Trans>> = {
       seed: "Seed",
       judge: "Judge",
       judgePh: "e.g. deepseekv4 (optional)",
+      reviewer: "Reviewer",
+      reviewerPh: "e.g. claude-sonnet (optional, challenges judge)",
+      verifier: "Verifier",
+      verifierPh: "e.g. gpt-4o (optional, final verdict)",
       save: "Save Settings",
       saving: "Saving...",
     },
@@ -160,6 +164,7 @@ const translations: Record<Locale, Record<string, Trans>> = {
       outputTokens: "Output Tokens",
       cost: "Cost",
       capabilities: "Capabilities",
+      difficulty: "Difficulty",
       cases: "Cases ({{count}})",
     },
     probe: {
@@ -197,9 +202,13 @@ const translations: Record<Locale, Record<string, Trans>> = {
       added: "+ Added",
       removed: "− Removed",
       unchanged: "→ Unchanged",
+      significant: "Significant",
+      notSignificant: "Not significant",
+      unknownSig: "Insufficient data",
     },
     caseTable: {
       case: "Case",
+      difficulty: "Difficulty",
       status: "Status",
       score: "Score",
       capabilities: "Capabilities",
@@ -210,6 +219,13 @@ const translations: Record<Locale, Record<string, Trans>> = {
     },
     capabilityTable: {
       capability: "Capability",
+      score: "Score",
+      passed: "Passed",
+      total: "Total",
+      passRate: "Pass Rate",
+    },
+    difficultyTable: {
+      difficulty: "Difficulty",
       score: "Score",
       passed: "Passed",
       total: "Total",
@@ -354,6 +370,10 @@ const translations: Record<Locale, Record<string, Trans>> = {
       seed: "随机种子",
       judge: "评判模型",
       judgePh: "例如 deepseekv4（可选）",
+      reviewer: "复核模型",
+      reviewerPh: "例如 claude-sonnet（可选，挑战评判）",
+      verifier: "验证模型",
+      verifierPh: "例如 gpt-4o（可选，最终裁定）",
       save: "保存设置",
       saving: "保存中...",
     },
@@ -403,6 +423,7 @@ const translations: Record<Locale, Record<string, Trans>> = {
       outputTokens: "输出 Token",
       cost: "费用",
       capabilities: "能力",
+      difficulty: "难度",
       cases: "用例 ({{count}})",
     },
     probe: {
@@ -440,9 +461,13 @@ const translations: Record<Locale, Record<string, Trans>> = {
       added: "+ 新增",
       removed: "− 移除",
       unchanged: "→ 无变化",
+      significant: "显著",
+      notSignificant: "不显著",
+      unknownSig: "数据不足",
     },
     caseTable: {
       case: "用例",
+      difficulty: "难度",
       status: "状态",
       score: "得分",
       capabilities: "能力",
@@ -453,6 +478,13 @@ const translations: Record<Locale, Record<string, Trans>> = {
     },
     capabilityTable: {
       capability: "能力",
+      score: "得分",
+      passed: "通过",
+      total: "总计",
+      passRate: "通过率",
+    },
+    difficultyTable: {
+      difficulty: "难度",
       score: "得分",
       passed: "通过",
       total: "总计",
@@ -533,7 +565,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       let s = resolve(translations[locale], key);
       if (params) {
         s = s.replace(/{{(\w+)}}/g, (_, k) =>
-          params[k] != null ? String(params[k]) : `{{${k}}}`
+          params[k] != null ? String(params[k]) : ""
         );
       }
       return s;

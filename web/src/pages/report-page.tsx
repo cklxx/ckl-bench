@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScoreCard } from "@/components/score-card";
 import { CapabilityTable } from "@/components/capability-table";
+import { DifficultyTable } from "@/components/difficulty-table";
 import { CaseTable } from "@/components/case-table";
 import type { RunSummary, Result } from "@/lib/types";
 import { formatCost, formatNumber, shortId } from "@/lib/utils";
@@ -31,7 +32,9 @@ export function ReportPage({ summary, results }: ReportPageProps) {
             {t("report.run")}{" "}
             <span className="font-variant-numeric">{shortId(s.run_id)}</span>{" "}
             &middot; {s.adapter}
-            {s.judge && ` &middot; judge: ${s.judge}`}
+            {s.judge && ` · judge: ${s.judge}`}
+            {s.reviewer && ` · reviewer: ${s.reviewer}`}
+            {s.verifier && ` · verifier: ${s.verifier}`}
           </p>
         </div>
         <div className="flex gap-2">
@@ -122,6 +125,18 @@ export function ReportPage({ summary, results }: ReportPageProps) {
           </CardHeader>
           <CardContent>
             <CapabilityTable summary={s} />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Difficulty breakdown */}
+      {s.by_difficulty && Object.keys(s.by_difficulty).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{t("report.difficulty")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <DifficultyTable summary={s} />
           </CardContent>
         </Card>
       )}

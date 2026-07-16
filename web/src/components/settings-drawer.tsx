@@ -343,6 +343,22 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
                   placeholder={t("settings.judgePh")}
                 />
               </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">{t("settings.reviewer")}</label>
+                <Input
+                  value={settings?.defaults.reviewer ?? ""}
+                  onChange={(e) => updateDefault("reviewer", e.target.value)}
+                  placeholder={t("settings.reviewerPh")}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">{t("settings.verifier")}</label>
+                <Input
+                  value={settings?.defaults.verifier ?? ""}
+                  onChange={(e) => updateDefault("verifier", e.target.value)}
+                  placeholder={t("settings.verifierPh")}
+                />
+              </div>
             </div>
           </section>
         </div>

@@ -100,6 +100,8 @@ def compare_runs(
         "score_a": float(summary_a.get("score", 0.0)),
         "score_b": float(summary_b.get("score", 0.0)),
         "score_delta": float(summary_b.get("score", 0.0)) - float(summary_a.get("score", 0.0)),
+        "score_ci_a": summary_a.get("score_ci"),
+        "score_ci_b": summary_b.get("score_ci"),
         "passed_a": summary_a.get("passed"),
         "passed_b": summary_b.get("passed"),
         "counts": counts,

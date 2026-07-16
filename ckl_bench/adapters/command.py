@@ -33,6 +33,9 @@ class CommandAdapter:
         # the matching wrapper script so the user only sees the CLI name.
         first_token = shlex.split(command)[0] if isinstance(command, str) else command[0]
         cli_name = Path(first_token).name
+        # Display name is the raw CLI the user configured (e.g. "dsx"), so the
+        # dashboard shows the real agent name instead of "command".
+        self.display_name = cli_name
         if cli_name in _KNOWN_CLIS:
             wrapper = Path(__file__).parent.parent.parent / "scripts" / _KNOWN_CLIS[cli_name]
             command = f"{sys.executable} {wrapper}"
@@ -77,9 +80,22 @@ class CommandAdapter:
             "stderr": stderr,
         }
         if completed.returncode != 0:
+            # The wrapper scripts always write a JSON object to stdout, even on
+            # failure. Parse it to surface the real CLI error (stderr_tail)
+            # instead of dumping raw JSON at the user.
+            detail = stderr or stdout
+            if stdout:
+                try:
+                    parsed = json.loads(stdout)
+                except json.JSONDecodeError:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    tail = parsed.get("stderr_tail")
+                    if isinstance(tail, str) and tail.strip():
+                        detail = tail.strip()
             raise RuntimeError(
                 "command adapter failed with exit code "
-                f"{completed.returncode}: {stderr or stdout}"
+                f"{completed.returncode}: {detail}"
             )
 
         if not stdout:

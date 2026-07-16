@@ -268,6 +268,8 @@ Full forms:
     run_parser.add_argument("--capability", action="append", default=[], help="Run cases with capability")
     run_parser.add_argument("--limit", type=int, help="Limit number of selected cases")
     run_parser.add_argument("--judge", help="Judge target for judge expectations, for example deepseekv4")
+    run_parser.add_argument("--reviewer", help="Reviewer target (adversarial pipeline: challenges the judge)")
+    run_parser.add_argument("--verifier", help="Verifier target (adversarial pipeline: final verdict)")
     run_parser.add_argument("--out", default="runs", help="Output directory")
     run_parser.add_argument("--run-name", help="Stable run directory name")
     run_parser.add_argument("--keep-workspaces", action="store_true", help="Save final agent workspaces")
@@ -524,6 +526,14 @@ def _cmd_run(args: argparse.Namespace) -> int:
     adapter = build_adapter(args.adapter, config)
     judge_target = args.judge or os.environ.get("CKL_JUDGE")
     judge_adapter = adapter if judge_target in {"same", "self"} else _build_target_adapter(judge_target)
+    reviewer_target = getattr(args, "reviewer", None) or os.environ.get("CKL_REVIEWER")
+    reviewer_adapter = (
+        adapter if reviewer_target in {"same", "self"} else _build_target_adapter(reviewer_target)
+    )
+    verifier_target = getattr(args, "verifier", None) or os.environ.get("CKL_VERIFIER")
+    verifier_adapter = (
+        adapter if verifier_target in {"same", "self"} else _build_target_adapter(verifier_target)
+    )
     result = run_cases(
         selected,
         adapter,
@@ -534,6 +544,10 @@ def _cmd_run(args: argparse.Namespace) -> int:
             include_raw=args.include_raw,
             judge_adapter=judge_adapter,
             judge_name=judge_target,
+            reviewer_adapter=reviewer_adapter,
+            reviewer_name=reviewer_target,
+            verifier_adapter=verifier_adapter,
+            verifier_name=verifier_target,
             repeat=getattr(args, "repeat", 1),
             concurrency=getattr(args, "concurrency", 1),
             seed=getattr(args, "seed", 0),

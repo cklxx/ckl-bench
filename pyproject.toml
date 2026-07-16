@@ -36,6 +36,9 @@ dev = ["ruff>=0.5", "mypy>=1.8"]
 # Live dashboard server (WebSocket progress). Without it, the server falls
 # back to HTTP polling.
 serve = ["websockets>=12"]
+# Robust JSON repair for LLM judge/reviewer/verifier responses. Without it,
+# the parser falls back to a stdlib balanced-brace extractor.
+json = ["json-repair>=0.25"]
 
 [project.scripts]
 ckl = "ckl_bench.cli:main"

@@ -39,6 +39,40 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
     setC((prev) => (prev ? { ...prev, [key]: value } : prev));
   };
 
+  // Cases may store their prompt either as `input.prompt` or as the last
+  // user message in `input.messages`. Read from whichever is present so the
+  // editor never shows a blank prompt for messages-based cases.
+  const promptText =
+    c?.input?.prompt ||
+    (() => {
+      const msgs = c?.input?.messages;
+      if (!msgs) return "";
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === "user") return msgs[i].content;
+      }
+      return "";
+    })() ||
+    "";
+
+  const updatePrompt = (value: string) => {
+    setC((prev) => {
+      if (!prev) return prev;
+      const input = prev.input;
+      // If the case uses messages (no flat prompt), update the last user
+      // message in place rather than introducing a stray `prompt` key.
+      if (!input.prompt && input.messages?.length) {
+        const messages = [...input.messages];
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === "user") {
+            messages[i] = { ...messages[i], content: value };
+            return { ...prev, input: { ...input, messages } };
+          }
+        }
+      }
+      return { ...prev, input: { ...input, prompt: value } };
+    });
+  };
+
   const handleSave = async () => {
     if (!c) return;
     setError("");
@@ -107,21 +141,21 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">{t("caseEditor.prompt")}</label>
+                <label htmlFor="case-prompt" className="text-xs font-medium text-muted-foreground">{t("caseEditor.prompt")}</label>
                 <Textarea
+                  id="case-prompt"
                   rows={6}
-                  value={c.input?.prompt || ""}
-                  onChange={(e) =>
-                    updateField("input", { ...c.input, prompt: e.target.value })
-                  }
+                  value={promptText}
+                  onChange={(e) => updatePrompt(e.target.value)}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">
+                <label htmlFor="case-expectations" className="text-xs font-medium text-muted-foreground">
                   {t("caseEditor.expectations")}
                 </label>
                 <Textarea
+                  id="case-expectations"
                   rows={6}
                   value={expectationsText}
                   onChange={(e) => setExpectationsText(e.target.value)}

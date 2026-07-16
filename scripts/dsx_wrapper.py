@@ -23,6 +23,7 @@ from pathlib import Path
 from _common import (
     build_exec_command,
     build_prompt,
+    diagnose_stderr,
     extract_text,
     parse_usage_stderr,
     prepare_workspace,
@@ -49,12 +50,13 @@ def main() -> int:
     text = extract_text(completed.stdout)
     if source_workspace:
         sync_workspace(workspace, source_workspace)
+    stderr_tail = diagnose_stderr(completed.stderr.strip()[-2000:])
     output = {
         "text": text,
         "returncode": completed.returncode,
         "workspace": str(workspace),
         "usage": parse_usage_stderr(completed.stderr),
-        "stderr_tail": completed.stderr.strip()[-2000:],
+        "stderr_tail": stderr_tail,
     }
     print(json.dumps(output, ensure_ascii=True))
     return 0 if completed.returncode == 0 else completed.returncode

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getConfig,
+  getRun,
   getSettings,
   launchRun,
   listCases,
@@ -11,6 +12,7 @@ import { readData } from "@/lib/data";
 import type {
   CaseListItem,
   ConfigInfo,
+  Result,
   RunInfo,
   Settings,
 } from "@/lib/types";
@@ -199,6 +201,8 @@ export function BenchPage() {
       seed: settings?.defaults.seed ?? 0,
     };
     if (settings?.defaults.judge) params.judge = settings.defaults.judge;
+    if (settings?.defaults.reviewer) params.reviewer = settings.defaults.reviewer;
+    if (settings?.defaults.verifier) params.verifier = settings.defaults.verifier;
     try {
       const result = await launchRun(params);
       setRuns((prev) => [
@@ -211,6 +215,8 @@ export function BenchPage() {
             adapter: "command",
             adapter_display: adapterKey,
             manifest: { case_paths: [`cases/${packName}`] },
+            total: 0,
+            passed: 0,
           } as any,
         },
         ...prev,
@@ -252,7 +258,28 @@ export function BenchPage() {
     .map((r) => r.summary)
     .filter((s): s is NonNullable<typeof s> => s != null);
 
-  const allResults = runs.flatMap((r) => r.results ?? []);
+  // Fetch results for completed runs so FailureAnalysis can show check-type
+  // and error-pattern breakdowns (the list endpoint doesn't include results).
+  const [runResults, setRunResults] = useState<Record<string, Result[]>>({});
+  useEffect(() => {
+    const need = runs.filter(
+      (r) => r.status === "completed" && !r.results && !runResults[r.run_id]
+    );
+    if (need.length === 0) return;
+    Promise.allSettled(need.map((r) => getRun(r.run_id))).then((outcomes) => {
+      const patch: Record<string, Result[]> = {};
+      for (const oc of outcomes) {
+        if (oc.status === "fulfilled" && oc.value.results) {
+          patch[oc.value.run_id] = oc.value.results;
+        }
+      }
+      setRunResults((prev) => ({ ...prev, ...patch }));
+    });
+  }, [runs]);
+
+  const allResults = runs.flatMap(
+    (r) => r.results ?? runResults[r.run_id] ?? []
+  );
 
   return (
     <div className="min-h-screen bg-background text-foreground">

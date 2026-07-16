@@ -61,7 +61,11 @@ class BenchServer:
         self.port = port
         self.runs_dir = Path(runs_dir)
         self.cases_dir = Path(cases_dir)
-        self.manager = RunManager(self.runs_dir, self.cases_dir)
+        self.manager = RunManager(
+            self.runs_dir,
+            self.cases_dir,
+            db_path=self.runs_dir / "ckl-bench.db",
+        )
         self._http_server: ThreadingHTTPServer | None = None
         self._ws_thread: threading.Thread | None = None
         self._ws_loop: Any = None  # asyncio event loop for the WS server
@@ -431,6 +435,8 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
         concurrency = int(body.get("concurrency", 1))
         seed = int(body.get("seed", 0))
         judge_target = body.get("judge")
+        reviewer_target = body.get("reviewer")
+        verifier_target = body.get("verifier")
         cache_dir = body.get("cache_dir")
 
         try:
@@ -443,6 +449,8 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
                 concurrency=concurrency,
                 seed=seed,
                 judge_target=judge_target,
+                reviewer_target=reviewer_target,
+                verifier_target=verifier_target,
                 cache_dir=cache_dir,
             )
         except CaseValidationError as exc:

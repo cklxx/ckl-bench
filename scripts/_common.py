@@ -110,6 +110,25 @@ def build_exec_command(
     return command
 
 
+def diagnose_stderr(stderr: str) -> str:
+    """Append actionable guidance for common CLI errors so the user understands
+    what went wrong and how to fix it (e.g. wrong model for the account)."""
+    if not stderr:
+        return stderr
+    lower = stderr.lower()
+    # Codex/ChatGPT accounts reject certain models (e.g. gpt-5). The dsx and
+    # codex CLIs both surface this as "model is not supported".
+    if "model is not supported" in lower:
+        return (
+            stderr
+            + "\n\nThe model you selected is not supported by this CLI with "
+            "your current account. Open the dashboard Settings and pick a "
+            "model that your account provides, or clear the model field to use "
+            "the CLI default."
+        )
+    return stderr
+
+
 def slug(value: str) -> str:
     """Turn an arbitrary case id into a filesystem-safe slug."""
     slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")

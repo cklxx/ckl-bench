@@ -10,7 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { DiffData } from "@/lib/types";
-import { formatPercent, shortId } from "@/lib/utils";
+import { formatPercent, isSignificant, shortId } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
 interface DiffPageProps {
@@ -55,8 +55,9 @@ export function DiffPage({ diff }: DiffPageProps) {
     scoreDelta > 0
       ? "text-success"
       : scoreDelta < 0
-      ? "text-destructive"
-      : "text-muted-foreground";
+        ? "text-destructive"
+        : "text-muted-foreground";
+  const sig = isSignificant(d.score_ci_a, d.score_ci_b);
 
   const statusLabel = (status: string): string => {
     switch (status) {
@@ -148,6 +149,13 @@ export function DiffPage({ diff }: DiffPageProps) {
                 regressed: d.counts.regressed,
               })}
             </p>
+            {sig !== null && (
+              <div className="mt-1">
+                <Badge variant={sig ? "success" : "muted"}>
+                  {sig ? t("diff.significant") : t("diff.notSignificant")}
+                </Badge>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -49,6 +49,10 @@ class RunOptions:
     include_raw: bool = False
     judge_adapter: ModelAdapter | None = None
     judge_name: str | None = None
+    reviewer_adapter: ModelAdapter | None = None
+    reviewer_name: str | None = None
+    verifier_adapter: ModelAdapter | None = None
+    verifier_name: str | None = None
     repeat: int = 1
     concurrency: int = 1
     seed: int = 0
@@ -233,7 +237,10 @@ def _run_attempt(
             cache.put(key, {"text": response_text, "usage": usage.as_dict(), "model": model})
 
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-    grade = grade_case(case, response_text, workspace_path, options.judge_adapter)
+    grade = grade_case(
+        case, response_text, workspace_path,
+        options.judge_adapter, options.reviewer_adapter, options.verifier_adapter,
+    )
     cost = estimate_cost(usage, model, pricing)
 
     attempt: dict[str, Any] = {
@@ -399,6 +406,19 @@ def _summarize(
         low, high = stats.wilson_interval(bucket["passed"], bucket["count"])
         bucket["pass_rate_ci"] = [round(low, 4), round(high, 4)]
 
+    by_difficulty: dict[str, dict[str, Any]] = {}
+    for result in results:
+        diff = result.get("difficulty") or "unspecified"
+        bucket = by_difficulty.setdefault(diff, {"count": 0, "passed": 0, "scores": []})
+        bucket["count"] += 1
+        bucket["passed"] += int(bool(result["passed"]))
+        bucket["scores"].append(float(result["score"]))
+    for bucket in by_difficulty.values():
+        bucket_scores = bucket.pop("scores")
+        bucket["score"] = stats.mean(bucket_scores)
+        low, high = stats.wilson_interval(bucket["passed"], bucket["count"])
+        bucket["pass_rate_ci"] = [round(low, 4), round(high, 4)]
+
     total_usage = Usage()
     for result in results:
         total_usage = total_usage + Usage(**result.get("usage", {}))
@@ -410,7 +430,11 @@ def _summarize(
     summary: dict[str, Any] = {
         "run_id": run_id,
         "adapter": getattr(adapter, "name", adapter.__class__.__name__),
+        "adapter_display": getattr(adapter, "display_name", None)
+        or getattr(adapter, "name", adapter.__class__.__name__),
         "judge": options.judge_name,
+        "reviewer": options.reviewer_name,
+        "verifier": options.verifier_name,
         "total": total,
         "passed": passed,
         "failed": total - passed,
@@ -419,6 +443,7 @@ def _summarize(
         "pass_rate_ci": [round(pass_low, 4), round(pass_high, 4)],
         "score_ci": [round(score_low, 4), round(score_high, 4)],
         "by_capability": by_capability,
+        "by_difficulty": by_difficulty,
         "usage": total_usage.as_dict(),
         "cost_usd": total_cost,
         "latency_ms_total": round(sum(float(r.get("latency_ms", 0.0)) for r in results), 2),

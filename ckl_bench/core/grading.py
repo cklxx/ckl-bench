@@ -10,12 +10,52 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ckl_bench.adapters.base import GenerateRequest, ModelAdapter
+from ckl_bench.adapters.base import ModelAdapter
 
 from .cases import EvalCase
 from .sandbox import run_python_script
 
 _NUMBER_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
+
+# Writing-quality dimensions for the `quality` expectation kind. Each entry is
+# (machine key, Chinese label, English name, one-line description). The judge
+# scores each dimension 0.0–1.0 and the overall score is the average.
+_QUALITY_DIMENSIONS: tuple[tuple[str, str, str, str], ...] = (
+    ("clear", "清晰", "clarity",
+     "Clear and easy to understand; ideas expressed without ambiguity."),
+    ("coherent", "连贯", "coherence",
+     "Flows logically; ideas connected in a sensible order."),
+    ("concise", "简洁", "conciseness",
+     "Free of redundancy, filler, and unnecessary words."),
+    ("specific", "具体", "specificity",
+     "Concrete and specific rather than vague or abstract."),
+    ("accurate", "准确", "accuracy",
+     "Factually correct and free of errors."),
+    ("complete", "完整", "completeness",
+     "Fully addresses the task; all required parts covered."),
+    ("appropriate", "得体", "appropriateness",
+     "Tone, register, and style fit the context and audience."),
+)
+
+
+def _build_quality_criteria(selected: list[str] | None) -> str:
+    """Build the quality-rubric criteria string the judge will score against."""
+    if selected:
+        wanted = {str(s) for s in selected}
+        dims = [d for d in _QUALITY_DIMENSIONS if d[0] in wanted]
+    else:
+        dims = list(_QUALITY_DIMENSIONS)
+    lines = [
+        "Evaluate the candidate response on these writing-quality dimensions.",
+        "Score each dimension from 0.0 (fails entirely) to 1.0 (excellent).",
+        "The overall score is the average of the dimension scores.",
+        "",
+    ]
+    for _key, zh, en, desc in dims:
+        lines.append(f"- {zh} ({en}): {desc}")
+    lines.append("")
+    lines.append("Average the dimension scores for the overall score.")
+    return "\n".join(lines)
 
 
 @dataclass
@@ -62,9 +102,14 @@ def grade_case(
     response_text: str,
     workspace_path: Path | None,
     judge_adapter: ModelAdapter | None = None,
+    reviewer_adapter: ModelAdapter | None = None,
+    verifier_adapter: ModelAdapter | None = None,
 ) -> GradeResult:
     checks = [
-        _grade_expectation(case, expectation, response_text, workspace_path, judge_adapter)
+        _grade_expectation(
+            case, expectation, response_text, workspace_path,
+            judge_adapter, reviewer_adapter, verifier_adapter,
+        )
         for expectation in case.expectations
     ]
     total_weight = sum(check.weight for check in checks) or 1.0
@@ -79,11 +124,16 @@ def _grade_expectation(
     response_text: str,
     workspace_path: Path | None,
     judge_adapter: ModelAdapter | None,
+    reviewer_adapter: ModelAdapter | None = None,
+    verifier_adapter: ModelAdapter | None = None,
 ) -> CheckResult:
     kind = str(expectation["kind"])
     weight = float(expectation.get("weight", 1.0))
     try:
-        outcome = _evaluate(case, kind, expectation, response_text, workspace_path, judge_adapter)
+        outcome = _evaluate(
+            case, kind, expectation, response_text, workspace_path,
+            judge_adapter, reviewer_adapter, verifier_adapter,
+        )
     except Exception as exc:  # noqa: BLE001 - grader errors must be recorded, not hidden.
         outcome = _EvalOutcome(False, 0.0, f"grader error: {type(exc).__name__}: {exc}")
     score_fraction = min(max(outcome.score_fraction, 0.0), 1.0)
@@ -103,6 +153,8 @@ def _evaluate(
     response_text: str,
     workspace_path: Path | None,
     judge_adapter: ModelAdapter | None,
+    reviewer_adapter: ModelAdapter | None = None,
+    verifier_adapter: ModelAdapter | None = None,
 ) -> _EvalOutcome:
     if kind == "contains":
         text = _target_text(expectation, response_text, workspace_path)
@@ -125,7 +177,9 @@ def _evaluate(
     if kind == "regex":
         text = _target_text(expectation, response_text, workspace_path)
         flags = re.IGNORECASE if expectation.get("ignore_case") else 0
-        pattern = str(expectation["pattern"])
+        if "pattern" not in expectation and "value" not in expectation:
+            raise ValueError("regex expectation requires 'pattern' (or 'value')")
+        pattern = str(expectation.get("pattern", expectation.get("value")))
         return _bool_outcome(re.search(pattern, text, flags=flags) is not None, f"expected regex {pattern!r}")
     if kind == "json_path":
         data = _loads_lenient(_target_text(expectation, response_text, workspace_path))
@@ -151,7 +205,9 @@ def _evaluate(
         )
     if kind == "file_regex":
         path = _workspace_file(workspace_path, expectation)
-        pattern = str(expectation["pattern"])
+        if "pattern" not in expectation and "value" not in expectation:
+            raise ValueError("file_regex expectation requires 'pattern' (or 'value')")
+        pattern = str(expectation.get("pattern", expectation.get("value")))
         return _bool_outcome(
             re.search(pattern, path.read_text(encoding="utf-8")) is not None,
             f"expected {path.name} matches {pattern!r}",
@@ -199,7 +255,15 @@ def _evaluate(
             return _EvalOutcome(passed, score, str(result.get("detail", "python grader")))
         return _bool_outcome(bool(result), "python grader")
     if kind in {"judge", "llm_judge"}:
-        return _judge_expectation(case, expectation, response_text, workspace_path, judge_adapter)
+        return _judge_expectation(
+            case, expectation, response_text, workspace_path,
+            judge_adapter, reviewer_adapter, verifier_adapter,
+        )
+    if kind in {"quality", "writing_quality"}:
+        return _quality_expectation(
+            case, expectation, response_text, workspace_path,
+            judge_adapter, reviewer_adapter, verifier_adapter,
+        )
     raise ValueError(f"unknown expectation kind: {kind}")
 
 
@@ -213,70 +277,75 @@ def _judge_expectation(
     response_text: str,
     workspace_path: Path | None,
     judge_adapter: ModelAdapter | None,
+    reviewer_adapter: ModelAdapter | None = None,
+    verifier_adapter: ModelAdapter | None = None,
 ) -> _EvalOutcome:
-    if judge_adapter is None:
-        return _EvalOutcome(False, 0.0, "judge expectation requires --judge or CKL_JUDGE")
     criteria = str(expectation.get("criteria") or expectation.get("rubric") or "").strip()
     if not criteria:
         raise ValueError("judge expectation requires criteria or rubric")
-    threshold = float(expectation.get("threshold", expectation.get("pass_threshold", 0.7)))
-    target_text = _target_text(expectation, response_text, workspace_path)
-    prompt = _judge_prompt(case, criteria, target_text)
-    judge_response = judge_adapter.generate(
-        GenerateRequest(
-            case_id=f"{case.id}:judge",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a strict evaluation judge. Return JSON only with "
-                        "keys score, passed, and reason. score must be between 0 and 1."
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-            prompt=prompt,
-            metadata={"case_type": "judge", "judge_for": case.id},
-            timeout_s=float(expectation.get("timeout_s", case.timeout_s or 120)),
+    return _judge_with_criteria(
+        case, criteria, expectation, response_text, workspace_path,
+        judge_adapter, reviewer_adapter, verifier_adapter,
+    )
+
+
+def _quality_expectation(
+    case: EvalCase,
+    expectation: dict[str, Any],
+    response_text: str,
+    workspace_path: Path | None,
+    judge_adapter: ModelAdapter | None,
+    reviewer_adapter: ModelAdapter | None = None,
+    verifier_adapter: ModelAdapter | None = None,
+) -> _EvalOutcome:
+    """Judge the response on the 7 writing-quality dimensions (清晰/连贯/简洁/
+    具体/准确/完整/得体). Reuses the adversarial judge pipeline; the rubric is
+    built from the selected dimensions (defaults to all seven)."""
+    selected = expectation.get("dimensions")
+    if selected is not None and not isinstance(selected, list):
+        raise ValueError("quality 'dimensions' must be a list")
+    criteria = _build_quality_criteria(selected if isinstance(selected, list) else None)
+    return _judge_with_criteria(
+        case, criteria, expectation, response_text, workspace_path,
+        judge_adapter, reviewer_adapter, verifier_adapter,
+    )
+
+
+def _judge_with_criteria(
+    case: EvalCase,
+    criteria: str,
+    expectation: dict[str, Any],
+    response_text: str,
+    workspace_path: Path | None,
+    judge_adapter: ModelAdapter | None,
+    reviewer_adapter: ModelAdapter | None = None,
+    verifier_adapter: ModelAdapter | None = None,
+) -> _EvalOutcome:
+    if judge_adapter is None:
+        return _EvalOutcome(
+            False, 0.0,
+            f"{expectation['kind']} expectation requires --judge or CKL_JUDGE",
         )
+    threshold = float(expectation.get("threshold", expectation.get("pass_threshold", 0.7)))
+    timeout_s = float(expectation.get("timeout_s", case.timeout_s or 120))
+    target_text = _target_text(expectation, response_text, workspace_path)
+
+    from .judge import JudgeConfig, adversarial_judge
+
+    verdict = adversarial_judge(
+        case,
+        criteria,
+        target_text,
+        judge_adapter=judge_adapter,
+        reviewer_adapter=reviewer_adapter,
+        verifier_adapter=verifier_adapter,
+        config=JudgeConfig(threshold=threshold, timeout_s=timeout_s),
     )
-    data = _parse_judge_json(judge_response.text)
-    score = float(data.get("score", 1.0 if data.get("passed") else 0.0))
-    score = min(max(score, 0.0), 1.0)
-    passed = score >= threshold
-    reason = str(data.get("reason") or data.get("detail") or "").strip()
-    detail = f"judge score={score:.3f} threshold={threshold:.3f}"
-    if reason:
-        detail += f" | {reason}"
-    return _EvalOutcome(passed=passed, score_fraction=score, detail=detail)
-
-
-def _judge_prompt(case: EvalCase, criteria: str, target_text: str) -> str:
-    return (
-        f"Case id: {case.id}\n"
-        f"Title: {case.title}\n\n"
-        "Task prompt/messages:\n"
-        f"{json.dumps(case.messages, ensure_ascii=False, indent=2)}\n\n"
-        "Candidate response or artifact:\n"
-        f"{target_text}\n\n"
-        "Evaluation criteria:\n"
-        f"{criteria}\n\n"
-        "Return only JSON in this shape:\n"
-        '{"score":0.0,"passed":false,"reason":"short reason"}'
+    return _EvalOutcome(
+        passed=verdict.passed,
+        score_fraction=verdict.score,
+        detail=verdict.detail,
     )
-
-
-def _parse_judge_json(text: str) -> dict[str, Any]:
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as exc:
-        match = re.search(r"\{.*\}", text, flags=re.S)
-        if not match:
-            raise ValueError(f"judge returned non-JSON: {text[:200]}") from exc
-        data = json.loads(match.group(0))
-    if not isinstance(data, dict):
-        raise ValueError("judge JSON must be an object")
-    return data
 
 
 def _target_text(expectation: dict[str, Any], response_text: str, workspace_path: Path | None) -> str:

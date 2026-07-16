@@ -24,6 +24,7 @@ export interface Result {
   passed: boolean;
   score: number;
   capability?: string[];
+  difficulty?: string | null;
   checks?: Check[];
   response_text?: string;
   error?: string;
@@ -43,6 +44,8 @@ export interface RunSummary {
   adapter: string;
   adapter_display?: string;
   judge?: string;
+  reviewer?: string;
+  verifier?: string;
   total: number;
   passed: number;
   failed: number;
@@ -51,6 +54,7 @@ export interface RunSummary {
   pass_rate_ci?: [number, number];
   score_ci?: [number, number];
   by_capability?: Record<string, CapabilityBucket>;
+  by_difficulty?: Record<string, CapabilityBucket>;
   usage?: Usage;
   cost_usd?: number;
   latency_ms_total?: number;
@@ -97,6 +101,8 @@ export interface DiffData {
   score_a: number;
   score_b: number;
   score_delta: number;
+  score_ci_a?: [number, number];
+  score_ci_b?: [number, number];
   passed_a?: number;
   passed_b?: number;
   counts: {
@@ -207,6 +213,8 @@ export interface Settings {
     concurrency: number;
     seed: number;
     judge: string;
+    reviewer?: string;
+    verifier?: string;
   };
   active_adapters: string[];
 }

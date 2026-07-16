@@ -91,8 +91,8 @@ function analyze(
     title: t("analysis.overall"),
     value: formatPercent(latest.score),
     description: t("analysis.overallDesc", {
-      passed: latest.passed,
-      total: latest.total,
+      passed: latest.passed ?? 0,
+      total: latest.total ?? 0,
     }),
     variant: "default",
   });
