@@ -114,8 +114,11 @@ def grade_case(
     ]
     total_weight = sum(check.weight for check in checks) or 1.0
     score = sum(check.score for check in checks) / total_weight
-    threshold = float(case.metadata.get("pass_threshold", 1.0))
-    return GradeResult(score=score, passed=score >= threshold, checks=checks)
+    if "pass_threshold" in case.metadata:
+        passed = score >= float(case.metadata["pass_threshold"])
+    else:
+        passed = all(check.passed for check in checks)
+    return GradeResult(score=score, passed=passed, checks=checks)
 
 
 def _grade_expectation(
@@ -342,7 +345,7 @@ def _judge_with_criteria(
         config=JudgeConfig(threshold=threshold, timeout_s=timeout_s),
     )
     return _EvalOutcome(
-        passed=verdict.passed,
+        passed=verdict.score >= threshold,
         score_fraction=verdict.score,
         detail=verdict.detail,
     )

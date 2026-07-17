@@ -4,9 +4,9 @@ import { useT } from "@/lib/i18n";
 
 interface ScoreCardProps {
   title: string;
-  value: number;
+  value: number | null;
   description?: string;
-  ci?: [number, number];
+  ci?: [number, number] | null;
   variant?: "default" | "success" | "destructive" | "warning";
 }
 

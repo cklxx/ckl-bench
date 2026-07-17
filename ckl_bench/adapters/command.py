@@ -14,9 +14,9 @@ from .base import GenerateRequest, GenerateResponse
 # adapter routes through the matching wrapper script so the user only needs to
 # set the raw CLI name (e.g. "dsx") instead of "python scripts/dsx_wrapper.py".
 _KNOWN_CLIS: dict[str, str] = {
-    "dsx": "dsx_wrapper.py",
-    "codex": "codex_wrapper.py",
-    "claude": "claude_code_wrapper.py",
+    "dsx": "ckl_bench.wrappers.dsx",
+    "codex": "ckl_bench.wrappers.codex",
+    "claude": "ckl_bench.wrappers.claude_code",
 }
 
 
@@ -37,8 +37,7 @@ class CommandAdapter:
         # dashboard shows the real agent name instead of "command".
         self.display_name = cli_name
         if cli_name in _KNOWN_CLIS:
-            wrapper = Path(__file__).parent.parent.parent / "scripts" / _KNOWN_CLIS[cli_name]
-            command = f"{sys.executable} {wrapper}"
+            command = f"{shlex.quote(sys.executable)} -m {_KNOWN_CLIS[cli_name]}"
         self.command = command
         self.shell = bool(config.get("shell", isinstance(command, str)))
         self.cwd = config.get("cwd")

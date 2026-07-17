@@ -10,28 +10,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { DiffData } from "@/lib/types";
-import { formatPercent, isSignificant, shortId } from "@/lib/utils";
+import { formatPercent, shortId } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
 interface DiffPageProps {
   diff: DiffData;
-}
-
-function statusVariant(
-  status: string
-): "success" | "destructive" | "muted" | "warning" {
-  switch (status) {
-    case "improved":
-      return "success";
-    case "regressed":
-      return "destructive";
-    case "added":
-      return "warning";
-    case "removed":
-      return "destructive";
-    default:
-      return "muted";
-  }
 }
 
 function deltaBadge(delta: number | null) {
@@ -57,7 +40,6 @@ export function DiffPage({ diff }: DiffPageProps) {
       : scoreDelta < 0
         ? "text-destructive"
         : "text-muted-foreground";
-  const sig = isSignificant(d.score_ci_a, d.score_ci_b);
 
   const statusLabel = (status: string): string => {
     switch (status) {
@@ -149,13 +131,6 @@ export function DiffPage({ diff }: DiffPageProps) {
                 regressed: d.counts.regressed,
               })}
             </p>
-            {sig !== null && (
-              <div className="mt-1">
-                <Badge variant={sig ? "success" : "muted"}>
-                  {sig ? t("diff.significant") : t("diff.notSignificant")}
-                </Badge>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
@@ -187,7 +162,7 @@ export function DiffPage({ diff }: DiffPageProps) {
                     {shortId(c.case_id, 20)}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={statusVariant(c.status)}>
+                    <Badge variant="muted">
                       {statusLabel(c.status)}
                     </Badge>
                   </TableCell>

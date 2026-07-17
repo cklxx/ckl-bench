@@ -15,7 +15,8 @@ export function formatNumber(value: number | undefined | null): string {
   return value.toLocaleString("en-US");
 }
 
-export function formatCost(value: number): string {
+export function formatCost(value: number | undefined | null): string {
+  if (value == null) return "—";
   if (value === 0) return "$0.00";
   if (value < 0.001) return `$${value.toFixed(5)}`;
   return `$${value.toFixed(4)}`;
@@ -33,17 +34,12 @@ export function scoreVariant(
   return "destructive";
 }
 
-/**
- * Determine whether two 95% confidence intervals differ significantly.
- * Returns null when either CI is missing (can't determine), true when the
- * CIs don't overlap (significant at p < 0.05), false when they overlap.
- */
-export function isSignificant(
+export function intervalsOverlap(
   ciA: [number, number] | undefined,
   ciB: [number, number] | undefined
 ): boolean | null {
   if (!ciA || !ciB) return null;
-  return ciA[1] < ciB[0] || ciB[1] < ciA[0];
+  return !(ciA[1] < ciB[0] || ciB[1] < ciA[0]);
 }
 
 /** Score achieved per dollar spent. Returns "—" when cost is missing or zero. */

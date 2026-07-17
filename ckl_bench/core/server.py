@@ -18,7 +18,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 from ckl_bench.core.cases import (
     CaseValidationError,
@@ -45,6 +45,11 @@ _log = logging.getLogger(__name__)
 
 #: Default case file for newly created cases.
 DEFAULT_CASE_FILE = "custom.jsonl"
+MAX_BODY_BYTES = 1024 * 1024
+
+
+class RequestTooLargeError(ValueError):
+    pass
 
 
 class BenchServer:
@@ -70,6 +75,7 @@ class BenchServer:
         self._ws_thread: threading.Thread | None = None
         self._ws_loop: Any = None  # asyncio event loop for the WS server
         self._stop_event = threading.Event()
+        self._case_lock = threading.Lock()
         # Load and apply persistent settings (env vars for wrapper scripts).
         self.settings: Settings = load_settings()
         apply_settings(self.settings)
@@ -165,6 +171,8 @@ class BenchServer:
         """Gracefully shut down the server."""
         if self._http_server is not None:
             self._http_server.shutdown()
+            self._http_server.server_close()
+            self._http_server = None
         # Signal the WebSocket loop to exit cleanly (lets run_ws complete and
         # the async with block close the server before the loop is closed).
         if self._ws_loop is not None and self._ws_stop is not None:
@@ -173,6 +181,31 @@ class BenchServer:
             except Exception:  # noqa: BLE001 - loop may already be closed
                 pass
         self._stop_event.set()
+        if self._ws_thread is not None:
+            self._ws_thread.join(timeout=5)
+            self._ws_thread = None
+        self.manager.close(timeout=5)
+        try:
+            from ckl_bench.core.logging_config import shutdown_logging
+            shutdown_logging()
+        except Exception:  # noqa: BLE001
+            _log.exception("logging shutdown failed")
+
+
+def _int_field(body: dict[str, Any], name: str, default: int, minimum: int | None = None) -> int:
+    value = body.get(name, default)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{name} must be an integer")
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{name} must be at least {minimum}")
+    return value
+
+
+def _optional_str(body: dict[str, Any], name: str) -> str | None:
+    value = body.get(name)
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f"{name} must be a string")
+    return value
 
 
 def _make_handler(server: BenchServer) -> type[BaseHTTPRequestHandler]:
@@ -210,14 +243,25 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
         self._json({"error": message}, status=status)
 
     def _read_body(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length", 0))
+        raw_length = self.headers.get("Content-Length", "0")
+        try:
+            length = int(raw_length)
+        except ValueError as exc:
+            raise ValueError("invalid Content-Length") from exc
+        if length < 0:
+            raise ValueError("invalid Content-Length")
+        if length > MAX_BODY_BYTES:
+            raise RequestTooLargeError(f"request body exceeds {MAX_BODY_BYTES} bytes")
         if length == 0:
             return {}
         raw = self.rfile.read(length)
         try:
-            return json.loads(raw.decode("utf-8"))
-        except json.JSONDecodeError as exc:
+            body = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError(f"invalid JSON body: {exc}") from exc
+        if not isinstance(body, dict):
+            raise ValueError("JSON body must be an object")
+        return body
 
     # -- CORS preflight -----------------------------------------------------
 
@@ -241,14 +285,14 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
             if path == "/api/cases":
                 self._list_cases(query)
             elif path.startswith("/api/cases/"):
-                self._get_case(path.rsplit("/", 1)[-1])
+                self._get_case(unquote(path.rsplit("/", 1)[-1]))
             elif path == "/api/runs":
                 self._list_runs()
             elif path.startswith("/api/runs/") and path.endswith("/progress"):
                 run_id = path.split("/")[3]
                 self._get_progress(run_id)
             elif path.startswith("/api/runs/"):
-                self._get_run(path.rsplit("/", 1)[-1])
+                self._get_run(unquote(path.rsplit("/", 1)[-1]))
             elif path == "/api/providers":
                 self._list_providers()
             elif path == "/api/config":
@@ -274,6 +318,8 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
                 self._test_settings_adapter(body)
             else:
                 self._error(404, "not found")
+        except RequestTooLargeError as exc:
+            self._error(413, str(exc))
         except CaseValidationError as exc:
             self._error(400, str(exc))
         except ValueError as exc:
@@ -288,11 +334,13 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
         try:
             body = self._read_body()
             if path.startswith("/api/cases/"):
-                self._update_case(path.rsplit("/", 1)[-1], body)
+                self._update_case(unquote(path.rsplit("/", 1)[-1]), body)
             elif path == "/api/settings":
                 self._update_settings(body)
             else:
                 self._error(404, "not found")
+        except RequestTooLargeError as exc:
+            self._error(413, str(exc))
         except CaseValidationError as exc:
             self._error(400, str(exc))
         except ValueError as exc:
@@ -306,7 +354,7 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
 
         try:
             if path.startswith("/api/cases/"):
-                self._delete_case(path.rsplit("/", 1)[-1])
+                self._delete_case(unquote(path.rsplit("/", 1)[-1]))
             else:
                 self._error(404, "not found")
         except Exception as exc:  # noqa: BLE001
@@ -363,44 +411,40 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
 
     def _create_case(self, body: dict[str, Any]) -> None:
         case = validate_case_dict(body)
-        # Write to the default case file.
-        target = self.bench_server.cases_dir / DEFAULT_CASE_FILE
-        existing: list[EvalCase] = []
-        if target.exists():
-            existing = load_cases([str(target)])
-        if any(c.id == case.id for c in existing):
-            self._error(409, f"case id already exists: {case.id}")
-            return
-        existing.append(case)
-        write_cases(target, existing)
+        with self.bench_server._case_lock:
+            if any(existing.id == case.id for existing in self._all_cases()):
+                self._error(409, f"case id already exists: {case.id}")
+                return
+            target = self.bench_server.cases_dir / DEFAULT_CASE_FILE
+            existing = load_cases([str(target)]) if target.exists() else []
+            write_cases(target, [*existing, case])
         self._json(case_to_dict(case), status=201)
 
     def _update_case(self, case_id: str, body: dict[str, Any]) -> None:
-        # Ensure the id matches.
-        body["id"] = case_id
-        updated = validate_case_dict(body)
-        all_cases = self._all_cases()
-        target_case = next((c for c in all_cases if c.id == case_id), None)
-        if target_case is None:
-            self._error(404, f"case not found: {case_id}")
+        if "id" in body and body["id"] != case_id:
+            self._error(409, "case id does not match URL")
             return
-        source_path = target_case.source_path
-        # Read current file, replace the case, write back.
-        file_cases = load_cases([str(source_path)])
-        new_cases = [updated if c.id == case_id else c for c in file_cases]
-        write_cases(source_path, new_cases)
+        updated = validate_case_dict({**body, "id": case_id})
+        with self.bench_server._case_lock:
+            target_case = next((c for c in self._all_cases() if c.id == case_id), None)
+            if target_case is None:
+                self._error(404, f"case not found: {case_id}")
+                return
+            file_cases = load_cases([str(target_case.source_path)])
+            write_cases(
+                target_case.source_path,
+                [updated if c.id == case_id else c for c in file_cases],
+            )
         self._json(case_to_dict(updated))
 
     def _delete_case(self, case_id: str) -> None:
-        all_cases = self._all_cases()
-        target_case = next((c for c in all_cases if c.id == case_id), None)
-        if target_case is None:
-            self._error(404, f"case not found: {case_id}")
-            return
-        source_path = target_case.source_path
-        file_cases = load_cases([str(source_path)])
-        remaining = [c for c in file_cases if c.id != case_id]
-        write_cases(source_path, remaining)
+        with self.bench_server._case_lock:
+            target_case = next((c for c in self._all_cases() if c.id == case_id), None)
+            if target_case is None:
+                self._error(404, f"case not found: {case_id}")
+                return
+            file_cases = load_cases([str(target_case.source_path)])
+            write_cases(target_case.source_path, [c for c in file_cases if c.id != case_id])
         self._json({"deleted": case_id})
 
     # -- Runs API -----------------------------------------------------------
@@ -431,13 +475,22 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
         adapter_config = body.get("adapter_config") or body.get("config") or {}
         case_paths = body.get("case_paths")
         case_ids = body.get("case_ids")
-        repeat = int(body.get("repeat", 1))
-        concurrency = int(body.get("concurrency", 1))
-        seed = int(body.get("seed", 0))
-        judge_target = body.get("judge")
-        reviewer_target = body.get("reviewer")
-        verifier_target = body.get("verifier")
-        cache_dir = body.get("cache_dir")
+        if not isinstance(adapter_name, str) or not adapter_name:
+            raise ValueError("adapter must be a non-empty string")
+        if not isinstance(adapter_config, dict):
+            raise ValueError("adapter_config must be an object")
+        for name, value in (("case_paths", case_paths), ("case_ids", case_ids)):
+            if value is not None and (
+                not isinstance(value, list) or not all(isinstance(item, str) for item in value)
+            ):
+                raise ValueError(f"{name} must be a list of strings")
+        repeat = _int_field(body, "repeat", 1, minimum=1)
+        concurrency = _int_field(body, "concurrency", 1, minimum=1)
+        seed = _int_field(body, "seed", 0)
+        judge_target = _optional_str(body, "judge")
+        reviewer_target = _optional_str(body, "reviewer")
+        verifier_target = _optional_str(body, "verifier")
+        cache_dir = _optional_str(body, "cache_dir")
 
         try:
             run_id = self.bench_server.manager.start_run(
@@ -453,6 +506,8 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
                 verifier_target=verifier_target,
                 cache_dir=cache_dir,
             )
+        except RequestTooLargeError as exc:
+            self._error(413, str(exc))
         except CaseValidationError as exc:
             self._error(400, str(exc))
             return
@@ -509,11 +564,19 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
         )
 
     def _update_settings(self, body: dict[str, Any]) -> None:
-        settings = settings_from_dict(body)
-        save_settings(settings, existing=self.bench_server.settings)
-        apply_settings(settings)
-        self.bench_server.settings = settings
-        self._json({"ok": True})
+        requested = settings_from_dict(body)
+        save_settings(requested, existing=self.bench_server.settings)
+        canonical = load_settings()
+        apply_settings(canonical)
+        self.bench_server.settings = canonical
+        masked = mask_secrets(canonical)
+        self._json(
+            {
+                "adapters": masked.adapters,
+                "defaults": masked.defaults,
+                "active_adapters": masked.active_adapters,
+            }
+        )
 
     def _test_settings_adapter(self, body: dict[str, Any]) -> None:
         adapter_name = body.get("adapter_name", "mock")

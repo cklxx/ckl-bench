@@ -47,9 +47,13 @@ class UsageTests(unittest.TestCase):
         expected = rates["input"] + rates["output"]
         self.assertAlmostEqual(estimate_cost(usage, "gpt-4.1-mini"), round(expected, 6))
 
-    def test_cost_unknown_model_is_zero(self) -> None:
-        self.assertEqual(estimate_cost(Usage(100, 100, 200), "mystery-model"), 0.0)
-        self.assertEqual(estimate_cost(Usage(100, 100, 200), None), 0.0)
+    def test_cost_unknown_model_is_none(self) -> None:
+        self.assertIsNone(estimate_cost(Usage(100, 100, 200), "mystery-model"))
+        self.assertIsNone(estimate_cost(Usage(100, 100, 200), None))
+
+    def test_known_zero_cost_remains_zero(self) -> None:
+        pricing = {"free": {"input": 0.0, "output": 0.0}}
+        self.assertEqual(estimate_cost(Usage(100, 100, 200), "free", pricing), 0.0)
 
     def test_cost_override(self) -> None:
         pricing = {"x": {"input": 1000.0, "output": 0.0}}

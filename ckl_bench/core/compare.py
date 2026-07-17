@@ -61,6 +61,43 @@ def _classify(a: dict[str, Any] | None, b: dict[str, Any] | None) -> str:
 _ORDER = {"regressed": 0, "improved": 1, "added": 2, "removed": 3, "unchanged": 4}
 
 
+def _comparability(
+    summary_a: dict[str, Any], summary_b: dict[str, Any]
+) -> tuple[str, list[dict[str, Any]], str | None]:
+    manifest_a = summary_a.get("manifest") or {}
+    manifest_b = summary_b.get("manifest") or {}
+    signature_a = manifest_a.get("comparability_signature")
+    signature_b = manifest_b.get("comparability_signature")
+    if not signature_a or not signature_b:
+        return "unknown", [], "one or both runs predate comparability signatures"
+    if signature_a == signature_b:
+        return "compatible", [], None
+    differences = _policy_differences(
+        manifest_a.get("comparability"), manifest_b.get("comparability")
+    )
+    if not differences:
+        differences = [{"path": "comparability_signature", "a": signature_a, "b": signature_b}]
+    return "incompatible", differences, "run policies differ; aggregate verdict suppressed"
+
+
+def _policy_differences(a: Any, b: Any, path: str = "") -> list[dict[str, Any]]:
+    if isinstance(a, dict) and isinstance(b, dict):
+        differences: list[dict[str, Any]] = []
+        for key in sorted(set(a) | set(b)):
+            child = f"{path}.{key}" if path else str(key)
+            differences.extend(_policy_differences(a.get(key), b.get(key), child))
+        return differences
+    if isinstance(a, list) and isinstance(b, list):
+        differences = []
+        for index in range(max(len(a), len(b))):
+            child = f"{path}[{index}]"
+            left = a[index] if index < len(a) else None
+            right = b[index] if index < len(b) else None
+            differences.extend(_policy_differences(left, right, child))
+        return differences
+    return [] if a == b else [{"path": path or "comparability", "a": a, "b": b}]
+
+
 def compare_runs(
     summary_a: dict[str, Any],
     results_a: list[dict[str, Any]],
@@ -91,15 +128,34 @@ def compare_runs(
             }
         )
     cases.sort(key=lambda c: (_ORDER[c["status"]], -(abs(c["delta"]) if c["delta"] is not None else 0)))
+    comparability_status, comparability_differences, comparability_warning = _comparability(
+        summary_a, summary_b
+    )
+    score_a = float(summary_a.get("score") or 0.0)
+    score_b = float(summary_b.get("score") or 0.0)
+    aggregate_verdict = None
+    if comparability_status == "compatible":
+        delta = score_b - score_a
+        aggregate_verdict = (
+            "improved" if delta > SCORE_EPSILON
+            else "regressed" if delta < -SCORE_EPSILON
+            else "unchanged"
+        )
 
     return {
         "run_a": summary_a.get("run_id", "A"),
         "run_b": summary_b.get("run_id", "B"),
         "adapter_a": summary_a.get("adapter"),
         "adapter_b": summary_b.get("adapter"),
-        "score_a": float(summary_a.get("score", 0.0)),
-        "score_b": float(summary_b.get("score", 0.0)),
-        "score_delta": float(summary_b.get("score", 0.0)) - float(summary_a.get("score", 0.0)),
+        "score_a": score_a,
+        "score_b": score_b,
+        "score_delta": (score_b - score_a) if comparability_status == "compatible" else None,
+        "aggregate_verdict": aggregate_verdict,
+        "comparability": {
+            "status": comparability_status,
+            "differences": comparability_differences,
+            "warning": comparability_warning,
+        },
         "score_ci_a": summary_a.get("score_ci"),
         "score_ci_b": summary_b.get("score_ci"),
         "passed_a": summary_a.get("passed"),

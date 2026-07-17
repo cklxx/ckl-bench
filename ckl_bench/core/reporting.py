@@ -63,8 +63,11 @@ def render_terminal_report(summary: dict[str, Any], results: list[dict[str, Any]
         )
     usage = summary.get("usage") or {}
     if usage.get("total_tokens"):
-        cost = float(summary.get("cost_usd", 0.0))
-        cost_text = f"  |  cost ${cost:.4f}" if cost else ""
+        cost = summary.get("estimated_cost_usd", summary.get("cost_usd"))
+        if cost is None:
+            cost_text = "  |  estimated cost unknown"
+        else:
+            cost_text = f"  |  estimated cost ${float(cost):.4f}"
         lines.append(f"Usage  {usage['total_tokens']} tokens ({usage.get('input_tokens', 0)} in / {usage.get('output_tokens', 0)} out){cost_text}")
     if summary.get("judge"):
         lines.append(f"Judge  {summary['judge']}")
@@ -109,14 +112,33 @@ def render_probe_terminal(rows: list[dict[str, Any]], report_path: Path | None =
 
 def render_diff_terminal(diff: dict[str, Any]) -> str:
     counts = diff["counts"]
+    comparability = diff.get("comparability") or {"status": "unknown", "differences": []}
+    status = comparability.get("status", "unknown")
+    delta = diff.get("score_delta")
+    if delta is None:
+        score_line = (
+            f"Score  {diff['score_a'] * 100:5.1f}%  ->  {diff['score_b'] * 100:5.1f}%  "
+            "(aggregate verdict suppressed)"
+        )
+    else:
+        score_line = (
+            f"Score  {diff['score_a'] * 100:5.1f}%  ->  {diff['score_b'] * 100:5.1f}%  "
+            f"({'+' if delta >= 0 else ''}{delta * 100:.1f} pts)"
+        )
     lines = [
         "",
         f"Diff   {diff['run_a']}  ->  {diff['run_b']}",
-        f"Score  {diff['score_a'] * 100:5.1f}%  ->  {diff['score_b'] * 100:5.1f}%  "
-        f"({'+' if diff['score_delta'] >= 0 else ''}{diff['score_delta'] * 100:.1f} pts)",
+        f"Comparable  {status}",
+        score_line,
         f"Cases  regressed {counts['regressed']}  |  improved {counts['improved']}  |  "
         f"unchanged {counts['unchanged']}  |  added {counts['added']}  |  removed {counts['removed']}",
     ]
+    warning = comparability.get("warning")
+    if warning:
+        lines.append(f"Warning  {warning}")
+    differences = comparability.get("differences") or []
+    for difference in differences[:5]:
+        lines.append(f"  differs: {difference.get('path')}")
     changed = [c for c in diff["cases"] if c["status"] in {"regressed", "improved", "added", "removed"}]
     if changed:
         lines.append("")

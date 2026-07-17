@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { getSettings, updateSettings, testAdapter } from "@/lib/api";
-import type { Settings, AdapterConfig, AdapterTestResult } from "@/lib/types";
+import { updateSettings, testAdapter } from "@/lib/api";
+import type { Settings, AdapterConfig, AdapterTestResult, ProviderInfo } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -10,18 +10,21 @@ import { useT } from "@/lib/i18n";
 
 interface SettingsDrawerProps {
   open: boolean;
+  value: Settings | null;
+  providers?: ProviderInfo[];
   onClose: () => void;
+  onSaved: (settings: Settings) => void;
 }
 
-const ADAPTER_DEFS = [
+const FALLBACK_ADAPTERS = [
   { key: "claude-code", label: "Claude Code", icon: "CC" },
   { key: "codex", label: "Codex", icon: "CX" },
   { key: "dsx", label: "DSX", icon: "DS" },
 ];
 
-export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
+export function SettingsDrawer({ open, value, providers = [], onClose, onSaved }: SettingsDrawerProps) {
   const t = useT();
-  const [settings, setSettings] = useState<Settings | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(value);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, AdapterTestResult>>({});
@@ -32,11 +35,18 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
 
   useEffect(() => {
     if (open) {
-      getSettings()
-        .then(setSettings)
-        .catch((e) => setError(String(e)));
+      setSettings(value ? structuredClone(value) : null);
+      setError("");
     }
-  }, [open]);
+  }, [open, value]);
+
+  const adapterDefs = providers.length
+    ? providers.map((provider) => ({
+        key: provider.namespace,
+        label: provider.namespace,
+        icon: provider.namespace.slice(0, 2).toUpperCase(),
+      }))
+    : FALLBACK_ADAPTERS;
 
   // Clean up abort + timer on close.
   useEffect(() => {
@@ -85,7 +95,8 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
     setSaving(true);
     setError("");
     try {
-      await updateSettings(settings);
+      const saved = await updateSettings(settings);
+      onSaved(saved);
       onClose();
     } catch (e) {
       setError(String(e));
@@ -170,7 +181,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
               {t("settings.activeDesc")}
             </p>
             <div className="space-y-2">
-              {ADAPTER_DEFS.map((def) => {
+              {adapterDefs.map((def) => {
                 const active = settings?.active_adapters.includes(def.key);
                 return (
                   <button
@@ -197,7 +208,7 @@ export function SettingsDrawer({ open, onClose }: SettingsDrawerProps) {
           </section>
 
           {/* Adapter config sections */}
-          {ADAPTER_DEFS.map((def) => {
+          {adapterDefs.map((def) => {
             const config = settings?.adapters[def.key] || {};
             const testResult = testResults[def.key];
             const isTesting = testing === def.key;

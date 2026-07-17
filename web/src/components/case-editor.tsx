@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getCase, updateCase } from "@/lib/api";
+import { createCase, deleteCase, getCase, updateCase } from "@/lib/api";
 import type { CaseDetail } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,11 +10,24 @@ import { useT } from "@/lib/i18n";
 
 interface CaseEditorProps {
   caseId: string | null;
+  createPack?: string | null;
   onClose: () => void;
   onSaved?: () => void;
 }
 
-export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
+const blankCase = (pack?: string | null): CaseDetail => ({
+  id: pack ? `${pack}.new_case.v1` : "new_case.v1",
+  title: "New case",
+  type: "chat",
+  input: { prompt: "" },
+  expectations: [{ kind: "contains", value: "" }],
+  capability: pack ? [pack] : [],
+  difficulty: null,
+  timeout_s: null,
+  metadata: {},
+});
+
+export function CaseEditor({ caseId, createPack, onClose, onSaved }: CaseEditorProps) {
   const t = useT();
   const [c, setC] = useState<CaseDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -22,8 +35,20 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
   const [error, setError] = useState("");
   const [expectationsText, setExpectationsText] = useState("");
 
+  const creating = !caseId && createPack !== null && createPack !== undefined;
+
   useEffect(() => {
-    if (!caseId) return;
+    if (creating) {
+      const data = blankCase(createPack);
+      setC(data);
+      setExpectationsText(JSON.stringify(data.expectations, null, 2));
+      setError("");
+      return;
+    }
+    if (!caseId) {
+      setC(null);
+      return;
+    }
     setLoading(true);
     setError("");
     getCase(caseId)
@@ -33,7 +58,7 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
-  }, [caseId]);
+  }, [caseId, createPack, creating]);
 
   const updateField = <K extends keyof CaseDetail>(key: K, value: CaseDetail[K]) => {
     setC((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -79,13 +104,31 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
     let expectations = c.expectations;
     try {
       expectations = JSON.parse(expectationsText);
+      if (!Array.isArray(expectations)) throw new Error();
     } catch {
       setError(t("caseEditor.invalidJson"));
       return;
     }
     setSaving(true);
     try {
-      await updateCase(c.id, { ...c, expectations });
+      const payload = { ...c, expectations };
+      if (creating) await createCase(payload);
+      else await updateCase(c.id, payload);
+      onSaved?.();
+      onClose();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!c || creating || !window.confirm(`Delete ${c.id}?`)) return;
+    setSaving(true);
+    setError("");
+    try {
+      await deleteCase(c.id);
       onSaved?.();
       onClose();
     } catch (e) {
@@ -96,7 +139,7 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
   };
 
   return (
-    <Sheet open={!!caseId} onClose={onClose} side="right" width="56%" zIndex={51}>
+    <Sheet open={!!caseId || creating} onClose={onClose} side="right" width="56%" zIndex={51}>
       <div className="flex flex-1 min-h-0 flex-col">
         {/* Header */}
         <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
@@ -121,7 +164,11 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">{t("caseEditor.id")}</label>
-                  <Input value={c.id} disabled />
+                  <Input
+                    value={c.id}
+                    disabled={!creating}
+                    onChange={(e) => updateField("id", e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-muted-foreground">{t("caseEditor.type")}</label>
@@ -213,8 +260,13 @@ export function CaseEditor({ caseId, onClose, onSaved }: CaseEditorProps) {
         </div>
 
         {/* Footer */}
-        <div className="shrink-0 border-t px-6 py-4">
-          <Button className="w-full" onClick={handleSave} disabled={saving || !c}>
+        <div className="flex shrink-0 gap-2 border-t px-6 py-4">
+          {!creating && (
+            <Button variant="destructive" onClick={handleDelete} disabled={saving || !c}>
+              Delete
+            </Button>
+          )}
+          <Button className="flex-1" onClick={handleSave} disabled={saving || !c}>
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (

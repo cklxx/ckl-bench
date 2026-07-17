@@ -12,6 +12,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -25,6 +26,29 @@ from ckl_bench.core.db import RunDB
 from ckl_bench.core.runner import RunOptions, run_cases
 
 _log = logging.getLogger(__name__)
+
+#: Default judge target when ``--judge`` / ``CKL_JUDGE`` / settings judge are
+#: all unset.  dsx is a capable, dependency-light command agent that works out
+#: of the box via ``scripts/dsx_wrapper.py``.
+DEFAULT_JUDGE_TARGET = "dsx"
+
+
+def _normalize_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Ensure every result has a well-formed ``capability`` list.
+
+    Older runs or external result files may store ``capability`` as a plain
+    string or omit it entirely.  Normalising here guarantees the frontend
+    (which calls ``capability.map``) always receives a list.
+    """
+    for r in results:
+        cap = r.get("capability")
+        if cap is None:
+            r["capability"] = []
+        elif isinstance(cap, str):
+            r["capability"] = [cap]
+        elif not isinstance(cap, list):
+            r["capability"] = []
+    return results
 
 
 def collect_runs(runs_dir: Path) -> list[dict[str, Any]]:
@@ -57,6 +81,10 @@ def _resolve(target: str | None) -> Any | None:
     return build_adapter(provider["adapter"], dict(provider.get("config", {})))
 
 
+class RunConflictError(RuntimeError):
+    """Raised when a requested run ID is already reserved."""
+
+
 @dataclass
 class RunState:
     run_id: str
@@ -80,6 +108,7 @@ class RunManager:
     ) -> None:
         self._runs_dir = runs_dir
         self._cases_dir = cases_dir
+        self._runs_dir.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._states: dict[str, RunState] = {}
         self._threads: dict[str, threading.Thread] = {}
@@ -133,7 +162,7 @@ class RunManager:
         run_name: str | None = None,
     ) -> str:
         """Launch a run in a background thread and return its *run_id*."""
-        run_id = run_name or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        run_id = run_name or f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
 
         # Resolve case paths (default to all cases).
         paths = case_paths or [str(self._cases_dir)]
@@ -152,12 +181,21 @@ class RunManager:
 
         # Judge/reviewer/verifier adapters (reviewer & verifier are optional
         # adversarial-pipeline stages that challenge and finalise the judge).
+        # The judge defaults to dsx when no target is specified, so quality
+        # expectations are graded out of the box.
+        judge_target = judge_target or DEFAULT_JUDGE_TARGET
         judge_adapter = _resolve(judge_target)
         reviewer_adapter = _resolve(reviewer_target)
         verifier_adapter = _resolve(verifier_target)
 
         # Cache (stateless requests only).
         cache = ResponseCache(Path(cache_dir)) if cache_dir else None
+
+        # Atomically reserve the identity only after validation/build succeeds.
+        try:
+            (self._runs_dir / run_id).mkdir(parents=True, exist_ok=False)
+        except FileExistsError as exc:
+            raise RunConflictError(f"run already exists: {run_id}") from exc
 
         state = RunState(run_id=run_id)
         state.case_paths = list(paths)
@@ -181,6 +219,8 @@ class RunManager:
             verifier_name=verifier_target,
             cache=cache,
             on_progress=lambda event: self._on_progress(run_id, event),
+            cancellation_event=cancel_flag,
+            run_dir_precreated=True,
         )
 
         thread = threading.Thread(
@@ -210,14 +250,11 @@ class RunManager:
         result: dict[str, Any] | None = None
         try:
             result = run_cases(cases, adapter, options)
-            if cancel_flag.is_set():
-                state.status = "cancelled"
-            else:
-                state.status = "completed"
-                state.summary = result["summary"]
-                if state.summary is not None:
-                    manifest = state.summary.setdefault("manifest", {})
-                    manifest["case_paths"] = state.case_paths
+            state.summary = result["summary"]
+            if state.summary is not None:
+                manifest = state.summary.setdefault("manifest", {})
+                manifest["case_paths"] = state.case_paths
+            state.status = "cancelled" if cancel_flag.is_set() else "completed"
         except Exception as exc:  # noqa: BLE001 - record and surface
             state.status = "failed"
             state.error = f"{type(exc).__name__}: {exc}"
@@ -226,9 +263,13 @@ class RunManager:
             state.completed_at = time.time()
             # Persist final state and results to SQLite.
             if self._db is not None:
-                self._db.upsert_run(self._state_to_dict(state))
                 if result is not None:
-                    self._db.replace_results(run_id, result.get("results", []))
+                    self._db.finish_run(self._state_to_dict(state), result.get("results", []))
+                else:
+                    self._db.upsert_run(self._state_to_dict(state))
+            with self._lock:
+                self._threads.pop(run_id, None)
+                self._cancel_flags.pop(run_id, None)
             self._broadcast(
                 {
                     "type": "run_finished",
@@ -247,22 +288,27 @@ class RunManager:
                 return
             progress = state.progress
             if event["type"] == "run_started":
-                progress["total_cases"] = event.get("total_cases", 0)
-                progress["repeat"] = event.get("repeat", 1)
-                progress["cases"] = {}
+                total = event.get("total_cases", 0) * event.get("repeat", 1)
+                progress.update({"total": total, "started": 0, "completed": 0,
+                                 "passed": 0, "failed": 0, "error": 0,
+                                 "cancelled": 0, "repeat": event.get("repeat", 1),
+                                 "cases": {}})
             elif event["type"] == "case_started":
-                cases_progress = progress.setdefault("cases", {})
-                cases_progress[event["case_id"]] = {
-                    "status": "running",
-                    "attempt": event.get("attempt", 0),
-                }
+                progress["started"] = progress.get("started", 0) + 1
+                attempts = progress.setdefault("cases", {}).setdefault(event["case_id"], {})
+                attempts[str(event.get("attempt", 0))] = {"status": "running"}
             elif event["type"] == "case_completed":
-                cases_progress = progress.setdefault("cases", {})
-                cases_progress[event["case_id"]] = {
-                    "status": "completed" if not event.get("error") else "failed",
-                    "attempt": event.get("attempt", 0),
-                    "score": event.get("score"),
-                    "passed": event.get("passed"),
+                progress["completed"] = progress.get("completed", 0) + 1
+                if event.get("error"):
+                    progress["error"] = progress.get("error", 0) + 1
+                elif event.get("passed"):
+                    progress["passed"] = progress.get("passed", 0) + 1
+                else:
+                    progress["failed"] = progress.get("failed", 0) + 1
+                attempts = progress.setdefault("cases", {}).setdefault(event["case_id"], {})
+                attempts[str(event.get("attempt", 0))] = {
+                    "status": "error" if event.get("error") else "completed",
+                    "score": event.get("score"), "passed": event.get("passed"),
                     "error": event.get("error"),
                 }
             elif event["type"] == "run_completed":
@@ -288,7 +334,7 @@ class RunManager:
             rid = run["run_id"]
             if rid not in active:
                 active[rid] = run
-        return sorted(active.values(), key=lambda r: r.get("run_id", ""), reverse=True)
+        return sorted(active.values(), key=lambda r: (r.get("started_at") or 0, r.get("run_id", "")), reverse=True)
 
     def get_run(self, run_id: str) -> dict[str, Any] | None:
         """Return a single run's state, progress, and summary."""
@@ -317,7 +363,7 @@ class RunManager:
         if self._db is not None:
             results = self._db.get_results(run_id)
             if results:
-                return results
+                return _normalize_results(results)
         results_path = self._runs_dir / run_id / "results.jsonl"
         if not results_path.exists():
             return []
@@ -330,7 +376,7 @@ class RunManager:
                         results.append(json.loads(line))
                     except json.JSONDecodeError:
                         pass
-        return results
+        return _normalize_results(results)
 
     def cancel_run(self, run_id: str) -> bool:
         """Signal a running run to stop. Returns True if the run was active."""
@@ -342,8 +388,22 @@ class RunManager:
             if state.status not in {"pending", "running"}:
                 return False
             flag.set()
-            state.status = "cancelled"
+            state.status = "cancellation_requested"
             return True
+
+    def close(self, timeout: float = 5.0) -> None:
+        """Request active runs to stop, join them boundedly, and close storage."""
+        with self._lock:
+            flags = list(self._cancel_flags.values())
+            threads = list(self._threads.values())
+        for flag in flags:
+            flag.set()
+        deadline = time.monotonic() + timeout
+        for thread in threads:
+            thread.join(max(0.0, deadline - time.monotonic()))
+        if self._db is not None:
+            self._db.close()
+            self._db = None
 
     def _state_to_dict(self, state: RunState) -> dict[str, Any]:
         return {

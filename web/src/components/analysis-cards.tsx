@@ -1,5 +1,4 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import type { RunSummary } from "@/lib/types";
 import { formatPercent } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
@@ -12,7 +11,6 @@ interface AnalysisItem {
   title: string;
   value: string;
   description: string;
-  variant: "success" | "destructive" | "warning" | "default";
 }
 
 function analyze(
@@ -40,7 +38,6 @@ function analyze(
           passed: bucket.passed,
           count: bucket.count,
         }),
-        variant: "success",
       });
     }
     if (sorted.length > 1) {
@@ -53,49 +50,49 @@ function analyze(
           passed: bucket.passed,
           count: bucket.count,
         }),
-        variant: "destructive",
       });
     }
   }
 
-  // Trend: compare latest vs previous
-  if (runs.length >= 2) {
+  // Trend: compare latest vs previous (skip if either run has no score)
+  if (runs.length >= 2 && latest.score != null) {
     const prev = runs[runs.length - 2];
-    const delta = latest.score - prev.score;
-    const pct = Math.round(delta * 1000) / 10;
-    if (pct > 0) {
-      items.push({
-        title: t("analysis.mostImproved"),
-        value: `+${pct.toFixed(1)}%`,
-        description: t("analysis.vsPrev", {
-          prev: formatPercent(prev.score),
-          curr: formatPercent(latest.score),
-        }),
-        variant: "success",
-      });
-    } else if (pct < 0) {
-      items.push({
-        title: t("analysis.regressed"),
-        value: `${pct.toFixed(1)}%`,
-        description: t("analysis.vsPrev", {
-          prev: formatPercent(prev.score),
-          curr: formatPercent(latest.score),
-        }),
-        variant: "destructive",
-      });
+    if (prev.score != null) {
+      const delta = latest.score - prev.score;
+      const pct = Math.round(delta * 1000) / 10;
+      if (pct > 0) {
+        items.push({
+          title: t("analysis.mostImproved"),
+          value: `+${pct.toFixed(1)}%`,
+          description: t("analysis.vsPrev", {
+            prev: formatPercent(prev.score),
+            curr: formatPercent(latest.score),
+          }),
+        });
+      } else if (pct < 0) {
+        items.push({
+          title: t("analysis.regressed"),
+          value: `${pct.toFixed(1)}%`,
+          description: t("analysis.vsPrev", {
+            prev: formatPercent(prev.score),
+            curr: formatPercent(latest.score),
+          }),
+        });
+      }
     }
   }
 
-  // Overall score
-  items.push({
-    title: t("analysis.overall"),
-    value: formatPercent(latest.score),
-    description: t("analysis.overallDesc", {
-      passed: latest.passed ?? 0,
-      total: latest.total ?? 0,
-    }),
-    variant: "default",
-  });
+  // Overall score (skip when the latest run has no score yet)
+  if (latest.score != null) {
+    items.push({
+      title: t("analysis.overall"),
+      value: formatPercent(latest.score),
+      description: t("analysis.overallDesc", {
+        passed: latest.passed ?? 0,
+        total: latest.total ?? 0,
+      }),
+    });
+  }
 
   return items;
 }
@@ -115,19 +112,8 @@ export function AnalysisCards({ runs }: AnalysisCardsProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold font-variant-numeric">
-                {item.value}
-              </span>
-              <Badge variant={item.variant === "default" ? "muted" : item.variant}>
-                {item.variant === "success"
-                  ? "↑"
-                  : item.variant === "destructive"
-                  ? "↓"
-                  : item.variant === "warning"
-                  ? "→"
-                  : "•"}
-              </Badge>
+            <div className="text-2xl font-bold font-variant-numeric">
+              {item.value}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               {item.description}

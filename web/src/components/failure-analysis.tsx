@@ -77,18 +77,6 @@ export function FailureAnalysis({ runs, results }: FailureAnalysisProps) {
     .map(([pattern, count]) => ({ pattern, count }))
     .sort((a, b) => b.count - a.count);
 
-  // Top failed capabilities.
-  const capFailedCounts = new Map<string, number>();
-  for (const r of failedResults) {
-    if (!r.capability) continue;
-    for (const c of r.capability) {
-      capFailedCounts.set(c, (capFailedCounts.get(c) ?? 0) + 1);
-    }
-  }
-  const topFailedCaps = Array.from(capFailedCounts.entries())
-    .map(([cap, count]) => ({ cap, count }))
-    .sort((a, b) => b.count - a.count);
-
   const hasResults = failedResults.length > 0;
 
   if (capRows.length === 0 && !hasResults) return null;
@@ -147,25 +135,6 @@ export function FailureAnalysis({ runs, results }: FailureAnalysisProps) {
 
       {hasResults && (
         <>
-          {topFailedCaps.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {t("failure.topFailed")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-1.5">
-                  {topFailedCaps.map((c) => (
-                    <Badge key={c.cap} variant="destructive" className="text-xs">
-                      {c.cap} ({formatNumber(c.count)})
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {checkTypeRows.length > 0 && (
             <Card>
               <CardHeader>

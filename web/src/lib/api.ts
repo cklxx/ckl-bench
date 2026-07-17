@@ -66,6 +66,10 @@ export function getRunProgress(runId: string): Promise<RunInfo> {
   return request<RunInfo>(`/api/runs/${encodeURIComponent(runId)}/progress`);
 }
 
+export function cancelRun(runId: string): Promise<{ run_id: string; status: string }> {
+  return request(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST", body: "{}" });
+}
+
 export interface LaunchRunParams {
   adapter?: string;
   adapter_config?: Record<string, any>;
@@ -97,8 +101,8 @@ export function getSettings(): Promise<Settings> {
   return request<Settings>("/api/settings");
 }
 
-export function updateSettings(settings: Settings): Promise<{ ok: boolean }> {
-  return request("/api/settings", {
+export function updateSettings(settings: Settings): Promise<Settings> {
+  return request<Settings>("/api/settings", {
     method: "PUT",
     body: JSON.stringify(settings),
   });

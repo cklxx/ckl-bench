@@ -8,13 +8,12 @@ version = "0.1.0"
 description = "ckl's personal benchmark for doc writing, infra code, and paper reading — one-click evaluation of the latest models via TUI coding CLIs."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "ckl" }]
 keywords = ["llm", "evaluation", "benchmark", "agent", "eval", "pass-at-k", "coding-cli"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -49,8 +48,12 @@ evb = "ckl_bench.cli:main"
 include = ["ckl_bench*"]
 
 [tool.setuptools.package-data]
-# Bundle the pre-built React frontend template.
 "ckl_bench.web" = ["index.html"]
+"ckl_bench.resources" = [
+    "cases/**/*.jsonl",
+    "configs/*.json",
+    "registries/models/*.jsonl",
+]
 
 [tool.ruff]
 line-length = 110

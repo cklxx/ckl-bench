@@ -91,6 +91,21 @@ class GradingTests(unittest.TestCase):
         self.assertAlmostEqual(grade.score, 0.75)
         self.assertFalse(grade.passed)  # default threshold 1.0
 
+    def test_explicit_threshold_uses_score_but_default_uses_check_passes(self) -> None:
+        expectation = {"kind": "judge", "criteria": "correct", "threshold": 0.4}
+        judge = StaticAdapter('{"score":0.5,"passed":false,"reason":"partial"}')
+        default_grade = grade_case(make_case([expectation]), "", None, judge_adapter=judge)
+        explicit_grade = grade_case(
+            make_case([expectation], metadata={"pass_threshold": 0.7}),
+            "",
+            None,
+            judge_adapter=judge,
+        )
+        self.assertEqual(default_grade.score, 0.5)
+        self.assertTrue(default_grade.checks[0].passed)
+        self.assertTrue(default_grade.passed)
+        self.assertFalse(explicit_grade.passed)
+
     def test_pass_threshold_metadata(self) -> None:
         case = make_case(
             [
@@ -208,6 +223,17 @@ class GradingTests(unittest.TestCase):
         prompt = judge.last_messages[-1]["content"]
         self.assertIn("清晰", prompt)
         self.assertIn("得体", prompt)
+
+    def test_quality_expectation_uses_score_not_self_reported_passed(self) -> None:
+        judge = StaticAdapter('{"score":0.9,"passed":false,"reason":"good"}')
+        case = make_case(
+            [{"kind": "quality", "threshold": 0.7}],
+            metadata={"pass_threshold": 0.7},
+        )
+        grade = grade_case(case, "A clear, accurate response.", None, judge_adapter=judge)
+        self.assertTrue(grade.checks[0].passed)
+        self.assertTrue(grade.passed)
+        self.assertAlmostEqual(grade.score, 0.9)
 
     def test_quality_expectation_without_judge_fails_gracefully(self) -> None:
         case = make_case([{"kind": "quality"}])

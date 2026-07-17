@@ -365,7 +365,7 @@ def run_judge(
     score = min(max(score, 0.0), 1.0)
     return JudgeOutput(
         score=score,
-        passed=bool(raw.get("passed", score >= config.threshold)),
+        passed=score >= config.threshold,
         reason=str(raw.get("reason") or raw.get("detail") or "").strip(),
         latency_ms=float(raw.get("_latency_ms", 0.0)),
     )
@@ -474,9 +474,7 @@ def run_verifier(
         confidence=confidence,
         edge_cases=[str(c) for c in raw.get("edge_cases", []) if c],
         final_score=final_score,
-        final_passed=bool(
-            raw.get("final_passed", final_score >= config.threshold)
-        ),
+        final_passed=final_score >= config.threshold,
         latency_ms=float(raw.get("_latency_ms", 0.0)),
     )
 

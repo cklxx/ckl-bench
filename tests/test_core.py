@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 from ckl_bench.adapters.mock import MockAdapter
-from ckl_bench.core.cases import EvalCase, load_cases
+from ckl_bench.core.cases import CaseValidationError, EvalCase, load_cases
 from ckl_bench.core.runner import RunOptions, run_cases
 
 
@@ -19,6 +19,30 @@ class EvalBenchCoreTests(unittest.TestCase):
         ids = {case.id for case in cases}
         self.assertIn("chat.js_event_loop_microtask_order.v1", ids)
         self.assertIn("agent.fix_binary_search_off_by_one.v1", ids)
+
+    def test_invalid_numeric_case_values_rejected(self) -> None:
+        invalid_fields = [
+            ({"expectations": [{"kind": "contains", "value": "x", "weight": True}]}, "weight"),
+            ({"expectations": [{"kind": "contains", "value": "x", "weight": 0}]}, "weight"),
+            ({"expectations": [{"kind": "contains", "value": "x", "weight": float("inf")}]}, "weight"),
+            ({"metadata": {"pass_threshold": 1.1}}, "pass_threshold"),
+            ({"expectations": [{"kind": "judge", "criteria": "x", "threshold": -0.1}]}, "threshold"),
+            ({"expectations": [{"kind": "quality", "pass_threshold": float("inf")}]}, "pass_threshold"),
+            ({"expectations": [{"kind": "numeric", "value": 1, "abs_tol": -1}]}, "abs_tol"),
+            ({"timeout_s": -1}, "timeout_s"),
+        ]
+        base = {
+            "id": "invalid.v1",
+            "input": {"prompt": "hi"},
+            "expectations": [{"kind": "contains", "value": "x"}],
+        }
+        for override, field in invalid_fields:
+            payload = {**base, **override}
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "cases.jsonl"
+                path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+                with self.assertRaisesRegex(CaseValidationError, field):
+                    load_cases([path])
 
     def test_mock_run_passes_chat_case(self) -> None:
         cases = [

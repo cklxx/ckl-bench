@@ -119,7 +119,57 @@ class EvalBenchCLITests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("Diff", out.getvalue())
 
-    def test_fail_under_gate(self) -> None:
+    def test_diff_gate_fails_closed_for_unknown_legacy_runs(self) -> None:
+        import json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for run_id in ("A", "B"):
+                run_dir = Path(tmp) / run_id
+                run_dir.mkdir()
+                (run_dir / "summary.json").write_text(
+                    json.dumps({"run_id": run_id, "score": 1.0}), encoding="utf-8"
+                )
+                (run_dir / "results.jsonl").write_text(
+                    json.dumps({"case_id": "x", "passed": True, "score": 1.0}) + "\n",
+                    encoding="utf-8",
+                )
+            with redirect_stdout(StringIO()) as out:
+                code = main([
+                    "diff", str(Path(tmp) / "A"), str(Path(tmp) / "B"),
+                    "--fail-on-regression",
+                ])
+        self.assertEqual(code, 3)
+        self.assertIn("Comparable  unknown", out.getvalue())
+
+    def test_diff_gate_fails_closed_for_incompatible_runs(self) -> None:
+        import json
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for run_id, signature, seed in (("A", "a", 0), ("B", "b", 1)):
+                run_dir = Path(tmp) / run_id
+                run_dir.mkdir()
+                summary = {
+                    "run_id": run_id,
+                    "score": 1.0,
+                    "manifest": {
+                        "comparability_signature": signature,
+                        "comparability": {"seed": seed},
+                    },
+                }
+                (run_dir / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+                (run_dir / "results.jsonl").write_text(
+                    json.dumps({"case_id": "x", "passed": True, "score": 1.0}) + "\n",
+                    encoding="utf-8",
+                )
+            with redirect_stdout(StringIO()) as out:
+                code = main([
+                    "diff", str(Path(tmp) / "A"), str(Path(tmp) / "B"),
+                    "--fail-on-regression",
+                ])
+        self.assertEqual(code, 3)
+        self.assertIn("Comparable  incompatible", out.getvalue())
+        self.assertIn("aggregate verdict suppressed", out.getvalue())
+
         with tempfile.TemporaryDirectory() as tmp:
             with redirect_stdout(StringIO()):
                 code = main(["run", "chat", "--out", tmp, "--run-name", "gate", "--fail-under", "0.99"])

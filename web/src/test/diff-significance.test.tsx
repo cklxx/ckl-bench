@@ -12,55 +12,23 @@ function makeDiffData(overrides: Partial<DiffData> = {}): DiffData {
     score_a: 0.4,
     score_b: 0.6,
     score_delta: 0.2,
-    counts: {
-      improved: 0,
-      regressed: 0,
-      unchanged: 0,
-      added: 0,
-      removed: 0,
-    },
+    counts: { improved: 0, regressed: 0, unchanged: 0, added: 0, removed: 0 },
     cases: [],
     ...overrides,
   } as DiffData;
 }
 
-function renderDiff(diff: DiffData) {
-  localStorage.setItem("ckl-bench-locale", "en");
-  return render(
-    <I18nProvider>
-      <DiffPage diff={diff} />
-    </I18nProvider>
-  );
-}
+describe("DiffPage intervals", () => {
+  beforeEach(() => localStorage.clear());
 
-describe("DiffPage significance", () => {
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
-  it("does NOT show significance badge when CIs are missing", () => {
-    renderDiff(makeDiffData());
+  it("does not claim statistical significance from confidence intervals", () => {
+    localStorage.setItem("ckl-bench-locale", "en");
+    render(
+      <I18nProvider>
+        <DiffPage diff={makeDiffData({ score_ci_a: [0.1, 0.3], score_ci_b: [0.5, 0.7] })} />
+      </I18nProvider>
+    );
     expect(screen.queryByText("Significant")).not.toBeInTheDocument();
     expect(screen.queryByText("Not significant")).not.toBeInTheDocument();
-  });
-
-  it("shows 'Significant' badge when CIs don't overlap", () => {
-    renderDiff(
-      makeDiffData({
-        score_ci_a: [0.1, 0.3],
-        score_ci_b: [0.5, 0.7],
-      })
-    );
-    expect(screen.getByText("Significant")).toBeInTheDocument();
-  });
-
-  it("shows 'Not significant' badge when CIs overlap", () => {
-    renderDiff(
-      makeDiffData({
-        score_ci_a: [0.1, 0.5],
-        score_ci_b: [0.3, 0.7],
-      })
-    );
-    expect(screen.getByText("Not significant")).toBeInTheDocument();
   });
 });

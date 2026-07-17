@@ -10,8 +10,8 @@ pick. Providers report usage in different shapes:
 
 ``normalize_usage`` collapses them to a common ``{input, output, total}`` shape.
 Pricing is best-effort and fully overridable: pass a ``pricing`` dict (USD per
-million tokens) or set ``CKL_PRICING_FILE`` to a JSON file. Unknown models cost
-0.0 and are reported as such rather than guessed.
+million tokens) or set ``CKL_PRICING_FILE`` to a JSON file. Unknown model
+pricing is reported as ``None`` rather than silently treated as free.
 """
 
 from __future__ import annotations
@@ -100,14 +100,18 @@ def load_pricing(overrides: dict[str, dict[str, float]] | None = None) -> dict[s
     return pricing
 
 
-def estimate_cost(usage: Usage, model: str | None, pricing: dict[str, dict[str, float]] | None = None) -> float:
-    """Best-effort USD cost for ``usage`` at ``model`` rates. Unknown -> 0.0."""
+def estimate_cost(
+    usage: Usage,
+    model: str | None,
+    pricing: dict[str, dict[str, float]] | None = None,
+) -> float | None:
+    """Best-effort USD cost for ``usage`` at ``model`` rates. Unknown -> None."""
     if not model:
-        return 0.0
+        return None
     table = pricing if pricing is not None else load_pricing()
     rates = table.get(model)
     if rates is None:
-        return 0.0
+        return None
     cost = (usage.input_tokens / 1_000_000) * float(rates.get("input", 0.0))
     cost += (usage.output_tokens / 1_000_000) * float(rates.get("output", 0.0))
     return round(cost, 6)

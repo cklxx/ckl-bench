@@ -35,6 +35,8 @@ interface PackDetailProps {
   runStates: PackRunState[];
   onClose: () => void;
   onEditCase: (id: string) => void;
+  onAddCase?: () => void;
+  onCancelRun?: (runId: string) => void;
   onRun: () => void;
 }
 
@@ -43,12 +45,14 @@ export function PackDetail({
   runStates,
   onClose,
   onEditCase,
+  onAddCase,
+  onCancelRun,
   onRun,
 }: PackDetailProps) {
   const t = useT();
   const copyTag = useCopyToast();
   const hasRunning = runStates.some(
-    (r) => r.status === "running" || r.status === "pending"
+    (r) => ["running", "pending", "cancellation_requested"].includes(r.status)
   );
   const hasCompleted = runStates.some((r) => r.status === "completed");
 
@@ -107,11 +111,17 @@ export function PackDetail({
                         : 0;
                     return (
                       <div key={rs.runId}>
-                        <div className="mb-1 flex items-center justify-between text-xs">
+                        <div className="mb-1 flex items-center justify-between gap-2 text-xs">
                           <span className="font-medium capitalize">
                             {rs.adapter}
                           </span>
-                          <span className="tabular-nums text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            {onCancelRun && ["running", "pending"].includes(rs.status) && (
+                              <Button variant="ghost" size="sm" onClick={() => onCancelRun(rs.runId)}>
+                                Cancel
+                              </Button>
+                            )}
+                            <span className="tabular-nums text-muted-foreground">
                             {rs.status === "completed"
                               ? t("pack.passed", {
                                   passed: rs.progress.passed,
@@ -121,7 +131,8 @@ export function PackDetail({
                                   completed: rs.progress.completed,
                                   total: rs.progress.total,
                                 })}
-                          </span>
+                            </span>
+                          </div>
                         </div>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                           <div
@@ -198,10 +209,13 @@ export function PackDetail({
         </div>
 
         {/* Footer */}
-        <div className="shrink-0 border-t px-6 py-4">
+        <div className="flex shrink-0 gap-2 border-t px-6 py-4">
+          {onAddCase && (
+            <Button variant="outline" onClick={onAddCase}>Add Case</Button>
+          )}
           <Button
             variant={!hasRunning && !hasCompleted ? "default" : "outline"}
-            className="w-full"
+            className="flex-1"
             onClick={onRun}
             disabled={hasRunning}
           >

@@ -1,0 +1,1 @@
+{"namespace":"dsx","aliases":[],"target":"default","default":true,"label":"DSX agent","kind":"command","adapter":"command","command":"dsx","probe":{"case_set":"agent","limit":1},"notes":["Command-line agent; auto-routed through scripts/dsx_wrapper.py"]}

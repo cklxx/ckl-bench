@@ -26,8 +26,9 @@ The repository is intentionally small and dependency-light, yet built to a
   sandbox, not by matching strings.
 - **Fast and cheap to iterate**: `--concurrency N` parallelism, retry/backoff on
   transient API errors, an opt-in `--cache`, and token + dollar cost tracking.
-- **Reproducible & comparable**: every run records a manifest (git SHA, seed,
-  model+params, dataset hash); `ckl diff` flags regressions between runs.
+- **Reproducible & comparable**: every run records a redacted manifest and
+  deterministic comparability signature. `ckl diff` fails closed when datasets,
+  scoring policies, models, judges, or repeat settings differ.
 - Optional judge-model grading is available for semantic checks.
 
 ## Quick Start
@@ -79,10 +80,10 @@ uv run ckl run codex agent
 uv run ckl run dsx agent
 ```
 
-Each agent target runs through a wrapper script (`scripts/claude_code_wrapper.py`,
-`scripts/codex_wrapper.py`, `scripts/dsx_wrapper.py`) that isolates workspaces and
-follows the JSON stdin/stdout contract. Override the binary with
-`CKL_CLAUDE_COMMAND`, `CKL_CODEX_COMMAND`, or `CKL_DSX_COMMAND`.
+Each agent target runs through a packaged wrapper module (`ckl_bench.wrappers`)
+that isolates workspaces and follows the JSON stdin/stdout contract. The legacy
+`scripts/*_wrapper.py` entrypoints remain thin checkout-compatible shims. Override
+the binary with `CKL_CLAUDE_COMMAND`, `CKL_CODEX_COMMAND`, or `CKL_DSX_COMMAND`.
 
 Run at scale with statistics, parallelism, caching, and a CI gate:
 
@@ -162,9 +163,8 @@ The dashboard has four pages:
   persisted to `cases/` JSONL).
 - **Launch** — select an adapter/provider, pick cases, set options (repeat,
   concurrency, seed, judge), and launch a run.
-- **Progress** — live per-case progress via WebSocket, with a progress bar,
-  status badges, and scores. Falls back to polling when `websockets` is not
-  installed.
+- **Progress** — live attempt-aware progress via WebSocket, with cooperative run
+  cancellation. Falls back to polling only active runs when WebSocket is unavailable.
 - **Reports** — aggregated run table, score trend chart, capability heatmap,
   and auto analysis (strongest/weakest capabilities, improving/regressing
   trends).
@@ -227,15 +227,13 @@ python scripts/frontier_cases.py --out cases/chat/frontier_compute.jsonl
 ckl_bench/core/         Runner, grading, reporting, stats, sandbox, cache, usage, compare
 ckl_bench/adapters/     Model + agent adapters (urllib, no SDKs) and shared HTTP retry
 ckl_bench/web/          Pre-built React frontend template (index.html) — bundled
-cases/chat/             Chat or API-only case packs
-cases/agent/            Agent cases with temporary workspaces and artifact checks
-cases/doc-writing/      Documentation writing cases (API docs, READMEs, changelogs)
-cases/infra-code/       Infrastructure code cases (Docker, systemd, nginx, deploy scripts)
-cases/paper-reading/    Paper reading cases (abstract comprehension, method comparison, results)
+ckl_bench/resources/   Packaged default cases, mock config, and provider registries
+ckl_bench/wrappers/    Packaged Claude Code, Codex, and DSX command bridges
+cases/                 Writable checkout case packs and user overrides
 configs/                Example adapter configs
 registries/models/      Plain JSONL model namespace configs
 docs/                   Standard, case schema, adapter, env, and probe docs
-scripts/                Example command adapter wrappers (claude code, codex, dsx)
+scripts/                Generators and checkout-compatible wrapper shims
 tests/                  Stdlib unittest suite
 web/                    React 19 + TypeScript frontend (Vite, shadcn/ui, Tailwind, Recharts)
 .github/workflows/      CI: validate + tests + smoke + build on py3.10-3.13

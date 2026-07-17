@@ -14,6 +14,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+_SCHEMA_VERSION = 1
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
     run_id        TEXT PRIMARY KEY,
@@ -72,7 +73,12 @@ class RunDB:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
+        version = int(self._conn.execute("PRAGMA user_version").fetchone()[0])
+        if version not in (0, _SCHEMA_VERSION):
+            self._conn.executescript("DROP TABLE IF EXISTS results; DROP TABLE IF EXISTS runs;")
         self._conn.executescript(_SCHEMA)
+        self._conn.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
+        self._closed = False
 
     # -- Low-level helpers ---------------------------------------------------
 
@@ -132,7 +138,7 @@ class RunDB:
                 int(summary.get("failed", 0)),
                 float(summary.get("score", 0)),
                 float(summary.get("pass_rate", 0)),
-                float(summary.get("cost_usd", 0)),
+                summary.get("cost_usd", summary.get("estimated_cost_usd")),
                 int((summary.get("usage") or {}).get("total_tokens", 0)),
                 run.get("started_at"),
                 run.get("completed_at"),
@@ -219,6 +225,37 @@ class RunDB:
             rows,
         )
 
+    def finish_run(self, run: dict[str, Any], results: list[dict[str, Any]]) -> None:
+        """Atomically persist terminal metadata and replace all results."""
+        with self._lock:
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                self._upsert_run_unlocked(run)
+                self._replace_results_unlocked(run["run_id"], results)
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
+
+    def _upsert_run_unlocked(self, run: dict[str, Any]) -> None:
+        summary = run.get("summary") or {}
+        progress = run.get("progress")
+        self._conn.execute(
+            """
+            INSERT INTO runs (run_id,status,adapter,adapter_display,judge,reviewer,verifier,total,passed,failed,score,pass_rate,cost_usd,total_tokens,started_at,completed_at,summary_json,progress_json,error)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(run_id) DO UPDATE SET status=excluded.status,adapter=excluded.adapter,adapter_display=excluded.adapter_display,judge=excluded.judge,reviewer=excluded.reviewer,verifier=excluded.verifier,total=excluded.total,passed=excluded.passed,failed=excluded.failed,score=excluded.score,pass_rate=excluded.pass_rate,cost_usd=excluded.cost_usd,total_tokens=excluded.total_tokens,started_at=excluded.started_at,completed_at=excluded.completed_at,summary_json=excluded.summary_json,progress_json=excluded.progress_json,error=excluded.error
+            """,
+            (run["run_id"], run.get("status", "pending"), summary.get("adapter") or run.get("adapter"), summary.get("adapter_display") or run.get("adapter_display"), summary.get("judge"), summary.get("reviewer"), summary.get("verifier"), int(summary.get("total", 0)), int(summary.get("passed", 0)), int(summary.get("failed", 0)), float(summary.get("score", 0)), float(summary.get("pass_rate", 0)), summary.get("cost_usd", summary.get("estimated_cost_usd")), int((summary.get("usage") or {}).get("total_tokens", 0)), run.get("started_at"), run.get("completed_at"), json.dumps(summary, sort_keys=True, separators=(",", ":")) if summary else None, json.dumps(progress, sort_keys=True, separators=(",", ":")) if progress else None, run.get("error")),
+        )
+
+    def _replace_results_unlocked(self, run_id: str, results: list[dict[str, Any]]) -> None:
+        self._conn.execute("DELETE FROM results WHERE run_id = ?", (run_id,))
+        if not results:
+            return
+        rows = [(run_id, r.get("case_id", ""), int(r.get("passed", False)), float(r.get("score", 0)), json.dumps(r.get("capability"), sort_keys=True, separators=(",", ":")) if r.get("capability") else None, r.get("difficulty"), json.dumps(r.get("checks"), sort_keys=True, separators=(",", ":")) if r.get("checks") else None, r.get("response_text"), r.get("error"), json.dumps(r.get("usage"), sort_keys=True, separators=(",", ":")) if r.get("usage") else None, r.get("cost_usd"), r.get("latency_ms")) for r in results]
+        self._conn.executemany("INSERT INTO results (run_id,case_id,passed,score,capability,difficulty,checks_json,response_text,error,usage_json,cost_usd,latency_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+
     def get_results(self, run_id: str) -> list[dict[str, Any]]:
         rows = self._execute(
             "SELECT * FROM results WHERE run_id = ? ORDER BY id", (run_id,)
@@ -243,10 +280,30 @@ class RunDB:
         from .run_manager import collect_runs
 
         imported = 0
+        seen: set[str] = set()
         for run in collect_runs(runs_dir):
             run.setdefault("status", "completed")
-            self.upsert_run(run)
+            run_id = run["run_id"]
+            summary_path = runs_dir / run_id / "summary.json"
+            if summary_path.exists() and run.get("started_at") is None:
+                run["started_at"] = summary_path.stat().st_mtime
+            results: list[dict[str, Any]] = []
+            results_path = runs_dir / run_id / "results.jsonl"
+            if results_path.exists():
+                for line in results_path.read_text(encoding="utf-8").splitlines():
+                    try:
+                        results.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+            self.finish_run(run, results)
+            seen.add(run_id)
             imported += 1
+        with self._lock:
+            if seen:
+                placeholders = ",".join("?" for _ in seen)
+                self._conn.execute(f"DELETE FROM runs WHERE run_id NOT IN ({placeholders})", tuple(sorted(seen)))
+            else:
+                self._conn.execute("DELETE FROM runs")
         return imported
 
     @staticmethod
@@ -261,8 +318,13 @@ class RunDB:
             "progress": progress,
             "summary": summary,
             "error": row.get("error"),
+            "started_at": row.get("started_at"),
+            "completed_at": row.get("completed_at"),
         }
 
     def close(self) -> None:
         with self._lock:
+            if self._closed:
+                return
             self._conn.close()
+            self._closed = True

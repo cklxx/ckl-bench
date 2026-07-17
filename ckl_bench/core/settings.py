@@ -149,16 +149,19 @@ def save_settings(settings: Settings, existing: Settings | None = None) -> None:
 
 
 def apply_settings(settings: Settings) -> None:
-    """Set env vars from settings so wrapper scripts pick them up.
-
-    Only sets keys that are present; does not unset existing shell env vars.
-    """
+    """Reconcile wrapper environment variables with *settings*."""
+    managed = {env_var for env_map in ADAPTER_ENV_MAP.values() for env_var in env_map.values()}
+    desired: dict[str, str] = {}
     for name, cfg in settings.adapters.items():
-        env_map = ADAPTER_ENV_MAP.get(name, {})
-        for key, value in cfg.items():
-            env_var = env_map.get(key)
-            if env_var and value is not None and str(value) != "":
-                os.environ[env_var] = str(value)
+        for key, env_var in ADAPTER_ENV_MAP.get(name, {}).items():
+            value = cfg.get(key)
+            if value is not None and str(value) != "":
+                desired[env_var] = str(value)
+    for env_var in managed:
+        if env_var in desired:
+            os.environ[env_var] = desired[env_var]
+        else:
+            os.environ.pop(env_var, None)
 
 
 def mask_secrets(settings: Settings) -> Settings:

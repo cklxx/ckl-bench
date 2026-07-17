@@ -35,21 +35,22 @@ from ckl_bench.core.reporting import (
 )
 from ckl_bench.core.run_manager import RunManager, collect_runs
 from ckl_bench.core.runner import RunOptions, filter_cases, run_cases
+from ckl_bench.resources import resource_path
 
 CASE_ALIASES = {
-    "all": "cases",
-    "chat": "cases/chat",
-    "agent": "cases/agent",
-    "doc-writing": "cases/doc-writing",
-    "infra-code": "cases/infra-code",
-    "paper-reading": "cases/paper-reading",
+    "all": str(resource_path("cases")),
+    "chat": str(resource_path("cases/chat")),
+    "agent": str(resource_path("cases/agent")),
+    "doc-writing": str(resource_path("cases/doc-writing")),
+    "infra-code": str(resource_path("cases/infra-code")),
+    "paper-reading": str(resource_path("cases/paper-reading")),
 }
 
-MOCK_CONFIG_PATH = Path("configs/mock.responses.json")
-COMMAND_AGENT_EXAMPLE = "python scripts/command_agent_example.py"
-CLAUDE_CODE_WRAPPER = "python scripts/claude_code_wrapper.py"
-CODEX_WRAPPER = "python scripts/codex_wrapper.py"
-DSX_WRAPPER = "python scripts/dsx_wrapper.py"
+MOCK_CONFIG_PATH = resource_path("configs/mock.responses.json")
+COMMAND_AGENT_EXAMPLE = f"{sys.executable} -m ckl_bench.wrappers.example"
+CLAUDE_CODE_WRAPPER = f"{sys.executable} -m ckl_bench.wrappers.claude_code"
+CODEX_WRAPPER = f"{sys.executable} -m ckl_bench.wrappers.codex"
+DSX_WRAPPER = f"{sys.executable} -m ckl_bench.wrappers.dsx"
 CLAUDE_CODE_KEY_ENVS = ["CKL_CLAUDE_API_KEY", "ANTHROPIC_API_KEY", "DSV4_API_KEY", "DEEPSEEK_API_KEY"]
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 LOCAL_BASE_URL = "http://127.0.0.1:8000/v1"
@@ -583,7 +584,10 @@ def _cmd_diff(args: argparse.Namespace) -> int:
         report_path = write_diff_html_report(Path(args.out), diff)
         output += f"report: {report_path}\n"
     print(output)
-    if args.fail_on_regression and diff["counts"]["regressed"]:
+    if args.fail_on_regression and (
+        diff.get("comparability", {}).get("status") != "compatible"
+        or diff["counts"]["regressed"]
+    ):
         return 3
     return 0
 

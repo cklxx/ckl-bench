@@ -69,16 +69,6 @@ describe("FailureAnalysis", () => {
     expect(screen.getByText("20.0%")).toBeInTheDocument();
   });
 
-  it("shows top failed capabilities badges from results", () => {
-    renderFailure([], [
-      makeFailedResult({ case_id: "c1", capability: ["clarity", "accuracy"] }),
-      makeFailedResult({ case_id: "c2", capability: ["clarity"] }),
-    ]);
-    expect(screen.getByText("Top Failed Capabilities")).toBeInTheDocument();
-    expect(screen.getByText("clarity (2)")).toBeInTheDocument();
-    expect(screen.getByText("accuracy (1)")).toBeInTheDocument();
-  });
-
   it("shows check type breakdown from failed results", () => {
     renderFailure([], [
       makeFailedResult({

@@ -160,16 +160,25 @@ export interface CaseDetail {
 
 export interface RunInfo {
   run_id: string;
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  status: "pending" | "running" | "cancellation_requested" | "completed" | "failed" | "cancelled";
   progress?: RunProgress;
   summary?: RunSummary;
   error?: string | null;
   results?: Result[];
+  started_at?: number | null;
+  completed_at?: number | null;
 }
 
 export interface RunProgress {
   total_cases?: number;
   repeat?: number;
+  total_attempts?: number;
+  started_attempts?: number;
+  completed_attempts?: number;
+  passed_attempts?: number;
+  failed_attempts?: number;
+  error_attempts?: number;
+  cancelled_attempts?: number;
   cases?: Record<string, CaseProgress>;
 }
 

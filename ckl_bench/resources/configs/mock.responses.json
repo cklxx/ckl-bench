@@ -1,0 +1,6 @@
+{
+  "responses": {
+    "chat.js_event_loop_microtask_order.v1": "{\"order\":[\"A\",\"D\",\"C\",\"B\"]}",
+    "chat.bst_rebuild_preorder.v1": "{\"preorder\":[1,2,4,5,3]}"
+  }
+}

@@ -18,6 +18,10 @@ interface RunTableProps {
 
 export function RunTable({ runs, onSelectRun }: RunTableProps) {
   const t = useT();
+  const hasCost = runs.some((r) => r.cost_usd != null && r.cost_usd > 0);
+  const hasTokens = runs.some(
+    (r) => r.usage?.total_tokens != null && r.usage.total_tokens > 0
+  );
   return (
     <Table>
       <TableHeader>
@@ -25,11 +29,13 @@ export function RunTable({ runs, onSelectRun }: RunTableProps) {
           <TableHead>{t("runTable.runId")}</TableHead>
           <TableHead>{t("runTable.adapter")}</TableHead>
           <TableHead className="text-right">{t("runTable.score")}</TableHead>
-          <TableHead className="text-right">{t("runTable.passed")}</TableHead>
-          <TableHead className="text-right">{t("runTable.total")}</TableHead>
           <TableHead className="text-right">{t("runTable.passRate")}</TableHead>
-          <TableHead className="text-right">{t("runTable.cost")}</TableHead>
-          <TableHead className="text-right">{t("runTable.tokens")}</TableHead>
+          {hasCost && (
+            <TableHead className="text-right">{t("runTable.cost")}</TableHead>
+          )}
+          {hasTokens && (
+            <TableHead className="text-right">{t("runTable.tokens")}</TableHead>
+          )}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -46,29 +52,30 @@ export function RunTable({ runs, onSelectRun }: RunTableProps) {
               <Badge variant="secondary">{r.adapter_display || r.adapter}</Badge>
             </TableCell>
             <TableCell className="text-right font-variant-numeric">
-              <Badge variant={scoreVariant(r.score)}>
+              <Badge variant={r.score != null ? scoreVariant(r.score) : "outline"}>
                 {formatPercent(r.score)}
               </Badge>
             </TableCell>
             <TableCell className="text-right font-variant-numeric">
-              {formatNumber(r.passed)}
-            </TableCell>
-            <TableCell className="text-right font-variant-numeric">
-              {formatNumber(r.total)}
-            </TableCell>
-            <TableCell className="text-right font-variant-numeric">
               {formatPercent(r.pass_rate)}
+              <div className="text-[10px] text-muted-foreground">
+                {formatNumber(r.passed)}/{formatNumber(r.total)}
+              </div>
             </TableCell>
-            <TableCell className="text-right font-variant-numeric">
-              {r.cost_usd != null && r.cost_usd > 0
-                ? formatCost(r.cost_usd)
-                : "—"}
-            </TableCell>
-            <TableCell className="text-right font-variant-numeric">
-              {r.usage?.total_tokens != null && r.usage.total_tokens > 0
-                ? formatNumber(r.usage.total_tokens)
-                : "—"}
-            </TableCell>
+            {hasCost && (
+              <TableCell className="text-right font-variant-numeric">
+                {r.cost_usd != null && r.cost_usd > 0
+                  ? formatCost(r.cost_usd)
+                  : "—"}
+              </TableCell>
+            )}
+            {hasTokens && (
+              <TableCell className="text-right font-variant-numeric">
+                {r.usage?.total_tokens != null && r.usage.total_tokens > 0
+                  ? formatNumber(r.usage.total_tokens)
+                  : "—"}
+              </TableCell>
+            )}
           </TableRow>
         ))}
       </TableBody>

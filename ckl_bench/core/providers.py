@@ -7,7 +7,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-REGISTRY_DIR = Path("registries/models")
+from ckl_bench.resources import resource_path
+
+REGISTRY_DIR = resource_path("registries/models")
 _ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
 
 
@@ -156,6 +158,7 @@ def _provider_from_target(namespace: dict[str, Any], target: dict[str, Any]) -> 
         "kind": target.get("kind", namespace.get("kind", "api")),
         "adapter": target.get("adapter", namespace.get("adapter", "openai")),
         "config": {
+            "command": target.get("command", namespace.get("command", "")),
             "base_url": target.get("base_url", namespace.get("base_url", "")),
             "api_key_envs": api_key_env,
             "model": target.get("model", namespace.get("model", "")),
@@ -223,7 +226,10 @@ def _redact(value: Any) -> Any:
         redacted: dict[str, Any] = {}
         for key, item in value.items():
             key_lower = key.lower()
-            if key_lower in {"api_key", "authorization", "secret", "token"}:
+            if any(part in key_lower for part in (
+                "api_key", "authorization", "access_token", "client_secret",
+                "password", "private_key", "secret", "token",
+            )):
                 redacted[key] = "***" if item else item
             else:
                 redacted[key] = _redact(item)

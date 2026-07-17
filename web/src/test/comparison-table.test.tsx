@@ -77,21 +77,7 @@ describe("ComparisonTable", () => {
     expect(screen.getAllByText("★").length).toBe(2);
   });
 
-  it("shows significance column only when exactly 2 runs", () => {
-    // 1 run → no CI column
-    const { unmount } = renderTable([makeRunSummary()]);
-    expect(screen.queryByText("95% CI")).not.toBeInTheDocument();
-    unmount();
-
-    // 2 runs → CI column appears
-    renderTable([
-      makeRunSummary({ run_id: "run-a" }),
-      makeRunSummary({ run_id: "run-b" }),
-    ]);
-    expect(screen.getByText("95% CI")).toBeInTheDocument();
-  });
-
-  it("shows 'Significant' badge when CIs don't overlap", () => {
+  it("keeps confidence intervals descriptive without significance claims", () => {
     renderTable([
       makeRunSummary({
         run_id: "run-a",
@@ -106,25 +92,8 @@ describe("ComparisonTable", () => {
         },
       }),
     ]);
-    expect(screen.getByText("Significant")).toBeInTheDocument();
-  });
-
-  it("shows 'Not significant' badge when CIs overlap", () => {
-    renderTable([
-      makeRunSummary({
-        run_id: "run-a",
-        by_capability: {
-          clarity: { score: 0.3, passed: 2, count: 5, pass_rate_ci: [0.1, 0.5] },
-        },
-      }),
-      makeRunSummary({
-        run_id: "run-b",
-        by_capability: {
-          clarity: { score: 0.5, passed: 3, count: 5, pass_rate_ci: [0.3, 0.7] },
-        },
-      }),
-    ]);
-    expect(screen.getByText("Not significant")).toBeInTheDocument();
+    expect(screen.queryByText("Significant")).not.toBeInTheDocument();
+    expect(screen.queryByText("Not significant")).not.toBeInTheDocument();
   });
 
   it("shows cost-effectiveness footer when cost/tokens data exists", () => {

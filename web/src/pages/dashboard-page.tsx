@@ -31,16 +31,44 @@ export function DashboardPage({ runs }: DashboardPageProps) {
       {/* Auto analysis */}
       {runs.length > 0 && <AnalysisCards runs={runs} />}
 
-      {/* Adapter comparison + failure analysis */}
-      {runs.length >= 2 && (
-        <>
-          <ComparisonTable runs={runs} />
-          <FailureAnalysis runs={runs} />
-        </>
+      {/* Heatmap — primary capability×run view */}
+      {runs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{t("dashboard.heatmap")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Heatmap runs={runs} />
+          </CardContent>
+        </Card>
       )}
 
-      {/* Trend chart */}
+      {/* Adapter comparison — collapsible */}
       {runs.length >= 2 && (
+        <Card>
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center gap-2">
+              <CardHeader className="flex-1 py-4">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <span className="text-xs transition-transform group-open:rotate-90">
+                    ▶
+                  </span>
+                  {t("comparison.title")}
+                </CardTitle>
+              </CardHeader>
+            </summary>
+            <CardContent>
+              <ComparisonTable runs={runs} />
+            </CardContent>
+          </details>
+        </Card>
+      )}
+
+      {/* Failure analysis */}
+      {runs.length >= 2 && <FailureAnalysis runs={runs} />}
+
+      {/* Trend chart — only meaningful with ≥3 runs */}
+      {runs.length >= 3 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{t("dashboard.scoreTrend")}</CardTitle>
@@ -52,18 +80,6 @@ export function DashboardPage({ runs }: DashboardPageProps) {
       )}
 
       <Separator />
-
-      {/* Heatmap */}
-      {runs.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t("dashboard.heatmap")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Heatmap runs={runs} />
-          </CardContent>
-        </Card>
-      )}
 
       {/* Runs table */}
       <Card>

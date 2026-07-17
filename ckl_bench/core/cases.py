@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import math
+import os
+import tempfile
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -105,6 +108,27 @@ def _parse_case(payload: dict[str, Any], path: Path, line_no: int) -> EvalCase:
     for index, expectation in enumerate(expectations):
         if not isinstance(expectation, dict) or "kind" not in expectation:
             raise CaseValidationError(f"{path}:{line_no}: expectations[{index}] needs kind")
+        prefix = f"expectations[{index}]"
+        kind = str(expectation["kind"])
+        if "weight" in expectation:
+            _validate_number(expectation["weight"], f"{prefix}.weight", path, line_no, positive=True)
+        if kind in {"judge", "llm_judge", "quality", "writing_quality"}:
+            for key in ("threshold", "pass_threshold"):
+                if key in expectation:
+                    _validate_number(
+                        expectation[key], f"{prefix}.{key}", path, line_no, unit_interval=True
+                    )
+        if kind in {"numeric", "close"}:
+            for key in ("abs_tol", "rel_tol", "tol"):
+                if key in expectation:
+                    _validate_number(
+                        expectation[key], f"{prefix}.{key}", path, line_no, nonnegative=True
+                    )
+        if kind in {"judge", "llm_judge", "quality", "writing_quality", "code_test", "execute", "run"}:
+            if "timeout_s" in expectation:
+                _validate_number(
+                    expectation["timeout_s"], f"{prefix}.timeout_s", path, line_no, nonnegative=True
+                )
 
     capability = payload.get("capability", [])
     if isinstance(capability, str):
@@ -114,11 +138,15 @@ def _parse_case(payload: dict[str, Any], path: Path, line_no: int) -> EvalCase:
 
     timeout_s = payload.get("timeout_s")
     if timeout_s is not None:
-        timeout_s = float(timeout_s)
+        timeout_s = _validate_number(timeout_s, "timeout_s", path, line_no, nonnegative=True)
 
     metadata = payload.get("metadata", {})
     if not isinstance(metadata, dict):
         raise CaseValidationError(f"{path}:{line_no}: metadata must be an object")
+    if "pass_threshold" in metadata:
+        _validate_number(
+            metadata["pass_threshold"], "metadata.pass_threshold", path, line_no, unit_interval=True
+        )
 
     return EvalCase(
         id=case_id,
@@ -133,6 +161,30 @@ def _parse_case(payload: dict[str, Any], path: Path, line_no: int) -> EvalCase:
         source_path=path,
         source_line=line_no,
     )
+
+
+def _validate_number(
+    value: Any,
+    field: str,
+    path: Path,
+    line_no: int,
+    *,
+    positive: bool = False,
+    nonnegative: bool = False,
+    unit_interval: bool = False,
+) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise CaseValidationError(f"{path}:{line_no}: {field} must be a finite number")
+    number = float(value)
+    if not math.isfinite(number):
+        raise CaseValidationError(f"{path}:{line_no}: {field} must be a finite number")
+    if positive and number <= 0:
+        raise CaseValidationError(f"{path}:{line_no}: {field} must be greater than 0")
+    if nonnegative and number < 0:
+        raise CaseValidationError(f"{path}:{line_no}: {field} must be nonnegative")
+    if unit_interval and not 0 <= number <= 1:
+        raise CaseValidationError(f"{path}:{line_no}: {field} must be between 0 and 1")
+    return number
 
 
 def _required_str(payload: dict[str, Any], key: str, path: Path, line_no: int) -> str:
@@ -177,9 +229,23 @@ def case_to_dict(case: EvalCase) -> dict[str, Any]:
 
 
 def write_cases(path: Path, cases: list[EvalCase]) -> Path:
-    """Write *cases* to *path* as JSONL (one case per line)."""
+    """Atomically write *cases* to *path* as JSONL."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for case in cases:
-            handle.write(json.dumps(case_to_dict(case), ensure_ascii=False) + "\n")
+    payloads = [case_to_dict(case) for case in cases]
+    for payload in payloads:
+        validate_case_dict(payload)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            for payload in payloads:
+                handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
     return path

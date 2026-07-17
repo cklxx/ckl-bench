@@ -3,12 +3,15 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
+import uuid
 from collections.abc import Callable, Iterable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,14 +21,27 @@ from ckl_bench.adapters.base import GenerateRequest, ModelAdapter
 
 from . import stats
 from .cache import NullCache, ResponseCache, cache_key
-from .cases import EvalCase
+from .cases import EvalCase, case_to_dict
 from .grading import grade_case
 from .reporting import write_html_report
 from .usage import Usage, estimate_cost, load_pricing
 
 # Bumped when the shape of summary.json / results.jsonl changes in a way that
 # makes older runs non-comparable. Reproducibility tooling reads this.
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.3"
+SCORING_POLICY_VERSION = "1.0"
+ERROR_POLICY_VERSION = "1.0"
+REPEAT_POLICY_VERSION = "1.0"
+COMPARABILITY_POLICY_VERSION = "1.0"
+
+_SECRET_KEY_RE = re.compile(r"(api[_-]?key|authorization|token|secret|password|credential|cookie)", re.I)
+_SECRET_ARG_RE = re.compile(
+    r"(?i)(--?(?:api[_-]?key|token|secret|password|authorization)(?:=|\s+))([^\s]+)"
+)
+_ADAPTER_BEHAVIOR_FIELDS = (
+    "model", "temperature", "max_tokens", "extra_body", "base_url", "endpoint",
+    "timeout_s", "text_path", "command", "shell", "cwd", "version", "headers", "extra_env",
+)
 
 _log = logging.getLogger(__name__)
 
@@ -58,6 +74,8 @@ class RunOptions:
     seed: int = 0
     cache: ResponseCache | NullCache | None = None
     on_progress: Callable[[dict[str, Any]], None] | None = None
+    cancellation_event: threading.Event | None = None
+    run_dir_precreated: bool = False
 
 
 def filter_cases(
@@ -79,9 +97,10 @@ def filter_cases(
 
 
 def run_cases(cases: list[EvalCase], adapter: ModelAdapter, options: RunOptions) -> dict[str, Any]:
-    run_id = options.run_name or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_id = options.run_name or f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
     run_dir = options.out_dir / run_id
-    run_dir.mkdir(parents=True, exist_ok=False)
+    if not options.run_dir_precreated:
+        run_dir.mkdir(parents=True, exist_ok=False)
     results_path = run_dir / "results.jsonl"
 
     repeat = max(1, int(options.repeat))
@@ -104,7 +123,7 @@ def run_cases(cases: list[EvalCase], adapter: ModelAdapter, options: RunOptions)
         for result in results:
             handle.write(json.dumps(result, ensure_ascii=True) + "\n")
 
-    summary = _summarize(run_id, results, adapter, options, repeat)
+    summary = _summarize(run_id, cases, results, adapter, options, repeat)
     summary_path = run_dir / "summary.json"
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
     report_path = write_html_report(run_dir, summary, results)
@@ -134,7 +153,7 @@ def _execute(
     cache: ResponseCache | NullCache,
     pricing: dict[str, dict[str, float]],
 ) -> list[dict[str, Any]]:
-    tasks = [(ci, ai) for ci in range(len(cases)) for ai in range(repeat)]
+    tasks = iter((ci, ai) for ci in range(len(cases)) for ai in range(repeat))
     grid: dict[int, dict[int, dict[str, Any]]] = {ci: {} for ci in range(len(cases))}
 
     def run_task(task: tuple[int, int]) -> tuple[int, int, dict[str, Any]]:
@@ -169,19 +188,56 @@ def _execute(
         return case_index, attempt_index, attempt
 
     concurrency = max(1, int(options.concurrency))
+    cancelled = options.cancellation_event
     if concurrency == 1:
         for task in tasks:
+            if cancelled is not None and cancelled.is_set():
+                break
             ci, ai, attempt = run_task(task)
             grid[ci][ai] = attempt
     else:
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            for ci, ai, attempt in pool.map(run_task, tasks):
-                grid[ci][ai] = attempt
+            pending: dict[Future[tuple[int, int, dict[str, Any]]], tuple[int, int]] = {}
+            task_iter = iter(tasks)
+            while True:
+                while len(pending) < concurrency and not (cancelled and cancelled.is_set()):
+                    try:
+                        task = next(task_iter)
+                    except StopIteration:
+                        break
+                    pending[pool.submit(run_task, task)] = task
+                if not pending:
+                    break
+                done, _ = wait(pending, return_when=FIRST_COMPLETED)
+                for future in done:
+                    pending.pop(future, None)
+                    ci, ai, attempt = future.result()
+                    grid[ci][ai] = attempt
 
-    return [
-        _aggregate_case(cases[ci], [grid[ci][ai] for ai in range(repeat)], repeat, pricing)
-        for ci in range(len(cases))
-    ]
+    results: list[dict[str, Any]] = []
+    for ci, case in enumerate(cases):
+        attempts = [grid[ci][ai] for ai in sorted(grid[ci])]
+        if attempts:
+            result = _aggregate_case(case, attempts, repeat)
+            if len(attempts) < repeat:
+                result["cancelled"] = True
+                result["scheduled_attempts"] = len(attempts)
+            results.append(result)
+        else:
+            results.append(_cancelled_case(case, repeat))
+    return results
+
+
+def _cancelled_case(case: EvalCase, repeat: int) -> dict[str, Any]:
+    return {
+        "case_id": case.id, "title": case.title, "type": case.type,
+        "capability": case.capability, "difficulty": case.difficulty,
+        "source": f"{case.source_path}:{case.source_line}", "score": 0.0,
+        "passed": False, "checks": [], "latency_ms": 0.0,
+        "response_text": "", "error": "cancelled", "usage": Usage().as_dict(),
+        "cost_usd": 0.0, "model": None, "cancelled": True,
+        "scheduled_attempts": 0, "repeat": repeat,
+    }
 
 
 def _run_attempt(
@@ -237,22 +293,43 @@ def _run_attempt(
             cache.put(key, {"text": response_text, "usage": usage.as_dict(), "model": model})
 
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-    grade = grade_case(
-        case, response_text, workspace_path,
-        options.judge_adapter, options.reviewer_adapter, options.verifier_adapter,
-    )
-    cost = estimate_cost(usage, model, pricing)
+    if error is None:
+        grade = grade_case(
+            case, response_text, workspace_path,
+            options.judge_adapter, options.reviewer_adapter, options.verifier_adapter,
+        )
+        score = grade.score
+        passed = grade.passed
+        checks = [check.as_dict() for check in grade.checks]
+        status = "completed"
+        error_type = None
+        error_message = None
+    else:
+        error_type, _, error_message = error.partition(": ")
+        score = 0.0
+        passed = False
+        checks = []
+        status = "error"
+    estimated_cost = estimate_cost(usage, model, pricing)
+    cost_status = "estimated" if estimated_cost is not None else "unknown_pricing"
+    provider_cost = 0.0 if cache_hit else estimated_cost
 
     attempt: dict[str, Any] = {
         "attempt": attempt_index,
-        "score": grade.score,
-        "passed": grade.passed and error is None,
-        "checks": [check.as_dict() for check in grade.checks],
+        "status": status,
+        "score": score,
+        "passed": passed,
+        "checks": checks,
         "latency_ms": elapsed_ms,
         "response_text": response_text,
         "error": error,
+        "error_type": error_type,
+        "error_message": error_message,
         "usage": usage.as_dict(),
-        "cost_usd": cost,
+        "estimated_cost_usd": estimated_cost,
+        "cost_usd": estimated_cost,
+        "provider_cost_usd": provider_cost,
+        "cost_status": "cache_hit" if cache_hit else cost_status,
         "model": model,
         "cache_hit": cache_hit,
     }
@@ -273,21 +350,34 @@ def _aggregate_case(
     case: EvalCase,
     attempts: list[dict[str, Any]],
     repeat: int,
-    pricing: dict[str, dict[str, float]],
 ) -> dict[str, Any]:
     rep = attempts[0]  # representative attempt for drill-down evidence
     scores = [float(a["score"]) for a in attempts]
     passes = [bool(a["passed"]) for a in attempts]
     n = len(attempts)
     c = sum(passes)
-    threshold = float(case.metadata.get("pass_threshold", 1.0))
+    error_count = sum(1 for a in attempts if a.get("status") == "error" or a.get("error"))
+    completed_count = n - error_count
     agg_score = stats.mean(scores)
 
     total_usage = Usage()
     for a in attempts:
         total_usage = total_usage + Usage(**a.get("usage", {}))
     model = rep.get("model")
-    cost = round(sum(float(a.get("cost_usd", 0.0)) for a in attempts), 6)
+    estimated_costs = [a.get("estimated_cost_usd", a.get("cost_usd")) for a in attempts]
+    known_cost_count = sum(cost is not None for cost in estimated_costs)
+    unknown_cost_count = n - known_cost_count
+    estimated_cost = (
+        round(sum(float(cost) for cost in estimated_costs if cost is not None), 6)
+        if unknown_cost_count == 0
+        else None
+    )
+    provider_costs = [a.get("provider_cost_usd") for a in attempts]
+    provider_cost = (
+        round(sum(float(cost) for cost in provider_costs if cost is not None), 6)
+        if all(cost is not None for cost in provider_costs)
+        else None
+    )
     first_error = next((a["error"] for a in attempts if a.get("error")), None)
 
     result: dict[str, Any] = {
@@ -297,14 +387,26 @@ def _aggregate_case(
         "capability": case.capability,
         "difficulty": case.difficulty,
         "source": f"{case.source_path}:{case.source_line}",
+        "status": "error" if error_count else "completed",
         "score": agg_score,
-        "passed": agg_score >= threshold,
+        "passed": error_count == 0 and all(passes),
         "checks": rep["checks"],
         "latency_ms": round(stats.mean([float(a["latency_ms"]) for a in attempts]), 2),
         "response_text": rep["response_text"],
         "error": first_error,
+        "error_type": next((a.get("error_type") for a in attempts if a.get("error_type")), None),
+        "error_message": next((a.get("error_message") for a in attempts if a.get("error_message")), None),
+        "attempt_count": n,
+        "completed_count": completed_count,
+        "passed_count": c,
+        "error_count": error_count,
         "usage": total_usage.as_dict(),
-        "cost_usd": cost,
+        "estimated_cost_usd": estimated_cost,
+        "cost_usd": estimated_cost,
+        "provider_cost_usd": provider_cost,
+        "cost_status": "estimated" if estimated_cost is not None else "unknown_pricing",
+        "known_cost_attempts": known_cost_count,
+        "unknown_cost_attempts": unknown_cost_count,
         "model": model,
     }
     if any(a.get("cache_hit") for a in attempts):
@@ -324,11 +426,17 @@ def _aggregate_case(
         result["attempts"] = [
             {
                 "attempt": a["attempt"],
+                "status": a.get("status", "error" if a.get("error") else "completed"),
                 "score": a["score"],
                 "passed": a["passed"],
                 "latency_ms": a["latency_ms"],
                 "error": a.get("error"),
+                "error_type": a.get("error_type"),
+                "error_message": a.get("error_message"),
                 "cache_hit": a.get("cache_hit", False),
+                "estimated_cost_usd": a.get("estimated_cost_usd", a.get("cost_usd")),
+                "provider_cost_usd": a.get("provider_cost_usd"),
+                "cost_status": a.get("cost_status"),
             }
             for a in attempts
         ]
@@ -382,6 +490,7 @@ def _prepare_workspace(case: EvalCase) -> Path | None:
 
 def _summarize(
     run_id: str,
+    cases: list[EvalCase],
     results: list[dict[str, Any]],
     adapter: ModelAdapter,
     options: RunOptions,
@@ -390,7 +499,12 @@ def _summarize(
     total = len(results)
     passed = sum(1 for result in results if result["passed"])
     case_scores = [float(result["score"]) for result in results]
-    score = stats.mean(case_scores)
+
+    # When no cases were evaluated, score/pass_rate are null (not 0.0) so the
+    # dashboard can distinguish "not run" from "scored 0".
+    has_results = total > 0
+    score = stats.mean(case_scores) if has_results else None
+    pass_rate = round(passed / total, 6) if has_results else None
 
     by_capability: dict[str, dict[str, Any]] = {}
     for result in results:
@@ -422,10 +536,29 @@ def _summarize(
     total_usage = Usage()
     for result in results:
         total_usage = total_usage + Usage(**result.get("usage", {}))
-    total_cost = round(sum(float(result.get("cost_usd", 0.0)) for result in results), 6)
+    result_costs = [r.get("estimated_cost_usd", r.get("cost_usd")) for r in results]
+    known_cost_count = sum(cost is not None for cost in result_costs)
+    unknown_cost_count = total - known_cost_count
+    total_cost = (
+        round(sum(float(cost) for cost in result_costs if cost is not None), 6)
+        if unknown_cost_count == 0
+        else None
+    )
+    provider_costs = [r.get("provider_cost_usd") for r in results]
+    provider_cost = (
+        round(sum(float(cost) for cost in provider_costs if cost is not None), 6)
+        if all(cost is not None for cost in provider_costs)
+        else None
+    )
 
-    pass_low, pass_high = stats.wilson_interval(passed, total) if total else (0.0, 0.0)
-    score_low, score_high = stats.bootstrap_mean_ci(case_scores, seed=options.seed) if total else (0.0, 0.0)
+    if has_results:
+        pass_low, pass_high = stats.wilson_interval(passed, total)
+        score_low, score_high = stats.bootstrap_mean_ci(case_scores, seed=options.seed)
+        pass_rate_ci: list[float] | None = [round(pass_low, 4), round(pass_high, 4)]
+        score_ci: list[float] | None = [round(score_low, 4), round(score_high, 4)]
+    else:
+        pass_rate_ci = None
+        score_ci = None
 
     summary: dict[str, Any] = {
         "run_id": run_id,
@@ -439,33 +572,46 @@ def _summarize(
         "passed": passed,
         "failed": total - passed,
         "score": score,
-        "pass_rate": round(passed / total, 6) if total else 0.0,
-        "pass_rate_ci": [round(pass_low, 4), round(pass_high, 4)],
-        "score_ci": [round(score_low, 4), round(score_high, 4)],
+        "pass_rate": pass_rate,
+        "pass_rate_ci": pass_rate_ci,
+        "score_ci": score_ci,
         "by_capability": by_capability,
         "by_difficulty": by_difficulty,
         "usage": total_usage.as_dict(),
+        "estimated_cost_usd": total_cost,
         "cost_usd": total_cost,
+        "provider_cost_usd": provider_cost,
+        "cost_status": "estimated" if total_cost is not None else "unknown_pricing",
+        "known_cost_cases": known_cost_count,
+        "unknown_cost_cases": unknown_cost_count,
         "latency_ms_total": round(sum(float(r.get("latency_ms", 0.0)) for r in results), 2),
-        "manifest": _build_manifest(results, adapter, options, repeat),
+        "manifest": _build_manifest(cases, adapter, options, repeat),
     }
     if repeat > 1:
         summary["repeat"] = repeat
-        summary["pass_at_1"] = round(stats.mean([float(r.get("pass_at_1", 0.0)) for r in results]), 6)
-        summary["pass_at_k"] = round(stats.mean([float(r.get("pass_at_k", 0.0)) for r in results]), 6)
-        summary["pass_pow_k"] = round(stats.mean([float(r.get("pass_pow_k", 0.0)) for r in results]), 6)
+        summary["pass_at_1"] = round(stats.mean([float(r.get("pass_at_1", 0.0)) for r in results]), 6) if has_results else None
+        summary["pass_at_k"] = round(stats.mean([float(r.get("pass_at_k", 0.0)) for r in results]), 6) if has_results else None
+        summary["pass_pow_k"] = round(stats.mean([float(r.get("pass_pow_k", 0.0)) for r in results]), 6) if has_results else None
     return summary
 
 
 def _build_manifest(
-    results: list[dict[str, Any]],
+    cases: list[EvalCase],
     adapter: ModelAdapter,
     options: RunOptions,
     repeat: int,
 ) -> dict[str, Any]:
-    sources = sorted({str(r.get("source", "")).rsplit(":", 1)[0] for r in results if r.get("source")})
+    sources = sorted({str(case.source_path) for case in cases})
+    comparability = _comparability_policy(cases, adapter, options, repeat)
+    canonical = json.dumps(comparability, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return {
         "schema_version": SCHEMA_VERSION,
+        "scoring_policy_version": SCORING_POLICY_VERSION,
+        "error_policy_version": ERROR_POLICY_VERSION,
+        "repeat_policy_version": REPEAT_POLICY_VERSION,
+        "comparability_policy_version": COMPARABILITY_POLICY_VERSION,
+        "comparability_signature": f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}",
+        "comparability": comparability,
         "ckl_bench_version": _ckl_bench_version(),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "git_sha": _git_sha(),
@@ -473,17 +619,74 @@ def _build_manifest(
         "repeat": repeat,
         "concurrency": max(1, int(options.concurrency)),
         "cache": not isinstance(options.cache, (type(None), NullCache)),
-        "model": {
-            "adapter": getattr(adapter, "name", adapter.__class__.__name__),
-            "model": getattr(adapter, "model", None),
-            "temperature": getattr(adapter, "temperature", None),
-            "max_tokens": getattr(adapter, "max_tokens", None),
-        },
+        "model": _adapter_policy(adapter),
         "dataset": {
             "files": _dataset_fingerprint(sources),
-            "case_count": len(results),
+            "case_count": len(cases),
         },
     }
+
+
+def _comparability_policy(
+    cases: list[EvalCase],
+    adapter: ModelAdapter,
+    options: RunOptions,
+    repeat: int,
+) -> dict[str, Any]:
+    return {
+        "policy_version": COMPARABILITY_POLICY_VERSION,
+        "policies": {
+            "schema": SCHEMA_VERSION,
+            "scoring": SCORING_POLICY_VERSION,
+            "error": ERROR_POLICY_VERSION,
+            "repeat": REPEAT_POLICY_VERSION,
+        },
+        "cases": [_sanitize(case_to_dict(case)) for case in cases],
+        "primary_adapter": _adapter_policy(adapter),
+        "judge": _named_adapter_policy(options.judge_name, options.judge_adapter),
+        "reviewer": _named_adapter_policy(options.reviewer_name, options.reviewer_adapter),
+        "verifier": _named_adapter_policy(options.verifier_name, options.verifier_adapter),
+        "repeat": repeat,
+        "seed": options.seed,
+    }
+
+
+def _named_adapter_policy(name: str | None, adapter: ModelAdapter | None) -> dict[str, Any] | None:
+    if adapter is None and name is None:
+        return None
+    policy = _adapter_policy(adapter) if adapter is not None else {}
+    return {"identity": name, **policy}
+
+
+def _adapter_policy(adapter: ModelAdapter) -> dict[str, Any]:
+    policy: dict[str, Any] = {
+        "adapter": getattr(adapter, "name", adapter.__class__.__name__),
+        "display_name": getattr(adapter, "display_name", None),
+    }
+    for field in _ADAPTER_BEHAVIOR_FIELDS:
+        if hasattr(adapter, field):
+            policy[field] = getattr(adapter, field)
+    return _sanitize(policy)
+
+
+def _sanitize(value: Any, key: str = "") -> Any:
+    """Return stable JSON-safe policy data with secret-bearing fields redacted."""
+    if _SECRET_KEY_RE.search(key):
+        return "<redacted>"
+    if isinstance(value, dict):
+        return {
+            str(k): _sanitize(v, str(k))
+            for k, v in sorted(value.items(), key=lambda item: str(item[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_sanitize(item) for item in value]
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, str):
+        return _SECRET_ARG_RE.sub(r"\1<redacted>", value)
+    if value is None or isinstance(value, (int, float, bool)):
+        return value
+    return repr(value)
 
 
 def _dataset_fingerprint(sources: list[str]) -> dict[str, str]:

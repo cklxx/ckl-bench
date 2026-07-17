@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
+  cancelRun,
   getConfig,
   getRun,
+  getRunProgress,
   getSettings,
   launchRun,
   listCases,
+  listProviders,
   listRuns,
   ProgressSocket,
 } from "@/lib/api";
@@ -12,6 +15,7 @@ import { readData } from "@/lib/data";
 import type {
   CaseListItem,
   ConfigInfo,
+  ProviderInfo,
   Result,
   RunInfo,
   Settings,
@@ -55,22 +59,24 @@ export function BenchPage() {
   const t = useT();
   const [config, setConfig] = useState<ConfigInfo | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [runs, setRuns] = useState<RunInfo[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
+  const [creatingCasePack, setCreatingCasePack] = useState<string | null | undefined>(undefined);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [detailPack, setDetailPack] = useState<PackInfo | null>(null);
   const [reportTab, setReportTab] = useState("overview");
   const [launching, setLaunching] = useState(false);
   const [error, setError] = useState("");
-  const socketRef = useRef<ProgressSocket | null>(null);
 
   const refresh = useCallback(() => {
     listCases().then(setCases).catch((e) => setError(String(e)));
     listRuns().then(setRuns).catch(() => {});
     getConfig().then(setConfig).catch(() => {});
     getSettings().then(setSettings).catch(() => {});
+    listProviders().then(setProviders).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -83,7 +89,6 @@ export function BenchPage() {
   useEffect(() => {
     const wsPort = config?.ws_port ?? injectedWsPort;
     const socket = new ProgressSocket(wsPort);
-    socketRef.current = socket;
     socket.on((event: any) => {
       if (event.type === "run_started") {
         setRuns((prev) =>
@@ -133,11 +138,32 @@ export function BenchPage() {
     });
     socket.connect();
     const poll = setInterval(() => {
-      if (!socket.connected) refresh();
+      if (!socket.connected) {
+        setRuns((current) => {
+          const active = current.filter((run) =>
+            ["pending", "running", "cancellation_requested"].includes(run.status)
+          );
+          void Promise.allSettled(active.map((run) => getRunProgress(run.run_id))).then(
+            (outcomes) => {
+              const updates = new Map(
+                outcomes
+                  .filter((outcome): outcome is PromiseFulfilledResult<RunInfo> => outcome.status === "fulfilled")
+                  .map((outcome) => [outcome.value.run_id, outcome.value])
+              );
+              setRuns((prev) => prev.map((run) => updates.get(run.run_id) || run));
+            }
+          );
+          return current;
+        });
+      }
     }, 2000);
+    const discover = setInterval(() => {
+      if (!socket.connected) listRuns().then(setRuns).catch(() => {});
+    }, 15000);
     return () => {
       socket.disconnect();
       clearInterval(poll);
+      clearInterval(discover);
     };
   }, [config?.ws_port, injectedWsPort, refresh]);
 
@@ -166,12 +192,12 @@ export function BenchPage() {
       (run.summary as any)?.adapter_display || run.summary?.adapter || "unknown";
     const progress = run.progress || { total_cases: 0, cases: {} };
     const progCases = progress.cases || {};
-    const total = progress.total_cases || Object.keys(progCases).length;
-    const completed = Object.values(progCases).filter(
+    const total = progress.total_attempts ?? progress.total_cases ?? Object.keys(progCases).length;
+    const completed = progress.completed_attempts ?? Object.values(progCases).filter(
       (c: any) => c.status === "completed" || c.status === "failed"
     ).length;
-    const passed = Object.values(progCases).filter(
-      (c: any) => c.status === "completed" && c.passed !== false
+    const passed = progress.passed_attempts ?? Object.values(progCases).filter(
+      (c: any) => c.status === "completed" && c.passed === true
     ).length;
     const existing = packRunMap.get(packName) || [];
     existing.push({
@@ -254,6 +280,17 @@ export function BenchPage() {
     setLaunching(false);
   };
 
+  const requestCancel = async (runId: string) => {
+    try {
+      await cancelRun(runId);
+      setRuns((prev) => prev.map((run) =>
+        run.run_id === runId ? { ...run, status: "cancellation_requested" } : run
+      ));
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const summaries = runs
     .map((r) => r.summary)
     .filter((s): s is NonNullable<typeof s> => s != null);
@@ -291,6 +328,9 @@ export function BenchPage() {
           </Badge>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setCreatingCasePack(null)}>
+            New Case
+          </Button>
           <Button
             variant="default"
             size="sm"
@@ -411,7 +451,13 @@ export function BenchPage() {
         )}
       </main>
 
-      <SettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsDrawer
+        open={settingsOpen}
+        value={settings}
+        providers={providers}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={setSettings}
+      />
       {/* Sheet stack: PackDetail (z-50) → CaseEditor (z-51) on top.
           Closing the editor reveals the pack detail underneath. */}
       <PackDetail
@@ -421,6 +467,8 @@ export function BenchPage() {
         }
         onClose={() => setDetailPack(null)}
         onEditCase={setEditingCaseId}
+        onAddCase={() => detailPack && setCreatingCasePack(detailPack.name)}
+        onCancelRun={requestCancel}
         onRun={() => {
           if (detailPack) launchPack(detailPack.name);
           setDetailPack(null);
@@ -432,7 +480,11 @@ export function BenchPage() {
       />
       <CaseEditor
         caseId={editingCaseId}
-        onClose={() => setEditingCaseId(null)}
+        createPack={creatingCasePack}
+        onClose={() => {
+          setEditingCaseId(null);
+          setCreatingCasePack(undefined);
+        }}
         onSaved={refresh}
       />
     </div>

@@ -84,7 +84,23 @@ class RunDBTests(unittest.TestCase):
         self.assertEqual(len(db.get_results("r1")), 1)
         db.close()
 
-    def test_rebuild_from_disk(self) -> None:
+    def test_nullable_cost_roundtrip(self) -> None:
+        db = RunDB(self._db_path)
+        db.upsert_run({
+            "run_id": "r1",
+            "status": "completed",
+            "summary": {"adapter": "mock", "cost_usd": None, "estimated_cost_usd": None},
+        })
+        db.replace_results(
+            "r1",
+            [{"case_id": "a", "passed": True, "score": 1.0, "cost_usd": None}],
+        )
+        fetched = db.get_run("r1")
+        assert fetched is not None
+        self.assertIsNone(fetched["summary"]["cost_usd"])
+        self.assertIsNone(db.get_results("r1")[0]["cost_usd"])
+        db.close()
+
         runs_dir = Path(self._tmp.name) / "runs"
         runs_dir.mkdir()
         _write_run(runs_dir, "20240101T000000Z")
@@ -146,6 +162,42 @@ class RunManagerDBTests(unittest.TestCase):
         runs = mgr.list_runs()
         self.assertEqual(len(runs), 1)
         self.assertEqual(runs[0]["summary"]["adapter_display"], "dsx")
+
+
+class NormalizeResultsTests(unittest.TestCase):
+    """Results loaded from stale DB rows or result files may store
+    ``capability`` as a plain string or omit it.  The normalisation step
+    must guarantee the frontend always receives a list."""
+
+    def setUp(self) -> None:
+        from ckl_bench.core.run_manager import _normalize_results
+
+        self._normalize = _normalize_results
+
+    def test_string_capability_becomes_list(self) -> None:
+        results = [{"case_id": "c1", "capability": "code"}]
+        norm = self._normalize(results)
+        self.assertEqual(norm[0]["capability"], ["code"])
+
+    def test_missing_capability_becomes_empty_list(self) -> None:
+        results = [{"case_id": "c1"}]
+        norm = self._normalize(results)
+        self.assertEqual(norm[0]["capability"], [])
+
+    def test_none_capability_becomes_empty_list(self) -> None:
+        results = [{"case_id": "c1", "capability": None}]
+        norm = self._normalize(results)
+        self.assertEqual(norm[0]["capability"], [])
+
+    def test_non_list_capability_becomes_empty_list(self) -> None:
+        results = [{"case_id": "c1", "capability": 42}]
+        norm = self._normalize(results)
+        self.assertEqual(norm[0]["capability"], [])
+
+    def test_list_capability_unchanged(self) -> None:
+        results = [{"case_id": "c1", "capability": ["code", "math"]}]
+        norm = self._normalize(results)
+        self.assertEqual(norm[0]["capability"], ["code", "math"])
 
 
 if __name__ == "__main__":

@@ -91,9 +91,22 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   3.10–3.13, plus a package build check.
 
 ### Changed
+- Result schema is now `1.3`: scoring, execution-error, repeat, cost, and
+  comparability policies are explicit. Adapter failures cannot aggregate into a
+  passing case, unknown pricing remains unknown, and regression gates reject
+  incompatible or legacy comparisons.
+- Run management now uses collision-safe IDs, attempt-aware progress,
+  cooperative cancellation, transactional SQLite indexing, deterministic cache
+  rebuilds, and graceful HTTP/WebSocket/database/logging shutdown.
+- The dashboard now owns one canonical settings state, supports case create and
+  delete, provider discovery, targeted progress polling, and cancellation.
+- Default cases, configuration, provider registries, and agent wrappers are
+  packaged in the wheel and resolved with `importlib.resources`; clean-wheel
+  smoke runs work outside a source checkout.
+- Confidence intervals remain visible as descriptive uncertainty; the UI no
+  longer labels interval overlap as a hypothesis test or `p < 0.05` result.
 - API adapters (OpenAI-compatible, Anthropic, Gemini, HTTP-JSON) now route
   through the shared retrying HTTP helper and report token usage.
-- `summary.json` / `results.jsonl` schema version is now `1.1` (additive).
 
 ## [0.1.0]
 

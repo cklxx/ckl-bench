@@ -53,7 +53,7 @@ export function ReportPage({ summary, results }: ReportPageProps) {
           title={t("report.score")}
           value={s.score}
           ci={s.score_ci}
-          variant={s.score >= 0.8 ? "success" : s.score >= 0.5 ? "warning" : "destructive"}
+          variant={s.score != null ? (s.score >= 0.8 ? "success" : s.score >= 0.5 ? "warning" : "destructive") : "default"}
         />
         <ScoreCard
           title={t("report.passRate")}
