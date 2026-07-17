@@ -1,0 +1,177 @@
+.gitignore
+  s_638886bdc74250::t_99af8c07c7902f 15-17
+CHANGELOG.md
+  s_638886bdc74250::t_09d98e650ec48f 94-107
+DEPLOYMENT.md
+  s_638886bdc74250::t_bcc6588bf36375 1-136
+README.md
+  s_638886bdc74250::t_878073e395fc52 29-31,83-86,166-167,230-232,236
+ckl_bench/adapters/command.py
+  s_23f18ceaa912ca::t_bc5d2790288a64 17-19,40
+ckl_bench/cli.py
+  s_638886bdc74250::t_3151459ea58ba2 38,41-46,49-53,587-590
+ckl_bench/core/cases.py
+  s_638886bdc74250::t_b95f3a2dc1df38 4-6,111-131,141,146-149,166-189,232,234-250
+ckl_bench/core/compare.py
+  s_638886bdc74250::t_882293a6187215 64-100,131-143,150-158
+ckl_bench/core/db.py
+  s_638886bdc74250::t_12c61be71a58fa 17,76-78,80-81,141,228-258,283,286-299,301-306,321-322,327-328,330
+ckl_bench/core/grading.py
+  s_638886bdc74250::t_6b9489f956b58e 117-121,348
+ckl_bench/core/judge.py
+  s_638886bdc74250::t_6379f428cc98b5 368,477
+ckl_bench/core/providers.py
+  s_638886bdc74250::t_bff6459fed865d 10-12,161,229-232
+ckl_bench/core/reporting.py
+  s_638886bdc74250::t_eaf6601a93d85b 66-70,115-127,131-132,136-141
+ckl_bench/core/run_manager.py
+  s_163ecf538a7b3d::t_fda23d53d0e588 15,30-52,84-87,111,165,184-186,194-199,222-223,253-257,267-272,291-295,297-299,301-311,337,366,379,391,394-407
+ckl_bench/core/runner.py
+  s_638886bdc74250::t_89aa0e3d743e21 6,10,12,14,24,31-44,77-78,100,102-103,126,156,191,194-195,200-240,296-315,319-322,326-327,329-332,359-360,367-380,390,392,397-402,404-409,429,434-435,437-439,493,502-507,539-552,554-561,575-577,581,583-586,588,592-594,599,604-606,609-614,622,625,630-691
+ckl_bench/core/server.py
+  s_43633805152d3a::t_9102f4a9ccf1e7 21,48-52,78,174-175,184-208,246-254,259-260,262-264,288,295,321-322,337,342-343,357,414-420,424-425,427-437,441-447,478-493,509-510,567-579
+ckl_bench/core/settings.py
+  s_8cfb108d179745::t_96334519332910 152-154,156-164
+ckl_bench/core/usage.py
+  s_638886bdc74250::t_ac850f09861080 13-14,103-108,110,114
+ckl_bench/resources/__init__.py
+  s_23f18ceaa912ca::t_a516dbb4fa8566 1-16
+ckl_bench/resources/cases/agent/execution_graded.jsonl
+  s_23f18ceaa912ca::t_cfe43659442e3c 1-3
+ckl_bench/resources/cases/agent/hard_programming.jsonl
+  s_23f18ceaa912ca::t_667acf61471735 1-7
+ckl_bench/resources/cases/chat/execution_graded.jsonl
+  s_23f18ceaa912ca::t_c8dad191ab12ef 1-11
+ckl_bench/resources/cases/chat/frontier_compute.jsonl
+  s_23f18ceaa912ca::t_c09296b2baceb2 1-24
+ckl_bench/resources/cases/chat/hard_programming.jsonl
+  s_23f18ceaa912ca::t_b80d14389b439c 1-6
+ckl_bench/resources/cases/chat/language_semantics.jsonl
+  s_23f18ceaa912ca::t_73ada7846d79eb 1-8
+ckl_bench/resources/cases/doc-writing/doc_writing.jsonl
+  s_23f18ceaa912ca::t_be2dae2e065865 1-4
+ckl_bench/resources/cases/infra-code/infra_code.jsonl
+  s_23f18ceaa912ca::t_abf26d52073847 1-4
+ckl_bench/resources/cases/judge/judge.jsonl
+  s_23f18ceaa912ca::t_136c85d38dde73 1-4
+ckl_bench/resources/cases/paper-reading/paper_reading.jsonl
+  s_23f18ceaa912ca::t_f754165d0d64e0 1-4
+ckl_bench/resources/configs/mock.responses.json
+  s_23f18ceaa912ca::t_21a1db33e9d3d5 1-6
+ckl_bench/resources/registries/models/deepseekv4.jsonl
+  s_23f18ceaa912ca::t_d84258663911d3 1
+ckl_bench/resources/registries/models/dsx.jsonl
+  s_638886bdc74250::t_7a97b942095d69 1
+ckl_bench/web/index.html
+  s_1d8d7d25738a4f::t_73176de1b33527 8,16,24,32,40,48-56,61,66,71,76,81,86,91,96,101,106,111,116,121,126,131,136,141-143,151-157,160-173,175,177-198,201-202,205-212
+ckl_bench/wrappers/claude_code.py
+  s_23f18ceaa912ca::t_47b7f3f9326a83 1-156
+ckl_bench/wrappers/codex.py
+  s_23f18ceaa912ca::t_aee48f0271463d 1-66
+ckl_bench/wrappers/common.py
+  s_23f18ceaa912ca::t_6407ed74b3f858 1-135
+ckl_bench/wrappers/dsx.py
+  s_23f18ceaa912ca::t_b2035e324a0e83 1-66
+ckl_bench/wrappers/example.py
+  s_23f18ceaa912ca::t_61a2cab0b2e358 1-36
+pyproject.toml
+  s_638886bdc74250::t_f414125996f3c2 11,52-56
+tests/test_cli.py
+  s_638886bdc74250::t_bc72751ea28ead 122-172
+tests/test_compare.py
+  s_638886bdc74250::t_a0998767a6ca7f 15-21,26,37,44,48-76
+tests/test_core.py
+  s_638886bdc74250::t_626ab91e6dc578 12,23-46
+tests/test_db.py
+  s_638886bdc74250::t_493f4fb659e4e8 87-103,167-202
+tests/test_grading.py
+  s_638886bdc74250::t_82852ad26d15a9 94-108,227-237
+tests/test_runner_features.py
+  s_638886bdc74250::t_24c5e5287e9b16 10,33-54,77-80,82-83,98-133,151-214
+tests/test_usage.py
+  s_638886bdc74250::t_1ac07684f71c4d 50-56
+web/package-lock.json
+  s_638886bdc74250::t_405a527b2e5310 1986
+web/src/components/case-editor.tsx
+  s_638886bdc74250::t_a10aedd867572e 2,13,18-30,38-39,41-51,61,107,114-131,142,167-171,263-269
+web/src/components/comparison-table.tsx
+  s_638886bdc74250::t_094f9040e401ca 55-113,118,127-152,156
+web/src/components/pack-detail.tsx
+  s_638886bdc74250::t_4165932c73e5ea 38-39,48-49,55,114,118-124,134-135,212-215,218
+web/src/components/settings-drawer.tsx
+  s_638886bdc74250::t_bad8b4f647f1f3 2-3,13-14,16,19,25,27,38-39,41-49,98-99,184,211
+web/src/lib/api.ts
+  s_638886bdc74250::t_7037d95d7d6140 69-72,104-105
+web/src/lib/types.ts
+  s_638886bdc74250::t_a12a74b52421ef 163,168-169,175-181
+web/src/lib/utils.ts
+  s_638886bdc74250::t_35c88fb9bfcf8c 18-19,37,42
+web/src/main.tsx
+  s_638886bdc74250::t_688c2586c8404c 12
+web/src/pages/bench-page.tsx
+  s_638886bdc74250::t_5d071abcb6563a 1,3,6,10,18,62,67,79,141-158,160-162,166,195-196,199-200,283-293,331-333,454-460,470-471,483-487
+web/src/pages/diff-page.tsx
+  s_638886bdc74250::t_8abe066814efb1 13,165
+web/src/test/comparison-table.test.tsx
+  s_638886bdc74250::t_e4b244b6a47dc4 80,95-96
+web/src/test/diff-significance.test.tsx
+  s_638886bdc74250::t_2c1710a56c10eb 15,21-22,24-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "daa77dc88836d6a68543fcdb06744bca18b23f36",
+  "prompts": {},
+  "sessions": {
+    "s_163ecf538a7b3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae522b0f9423cb214",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    },
+    "s_1d8d7d25738a4f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a352268e96d7f0750",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    },
+    "s_23f18ceaa912ca": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3913b22723f82d8f",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    },
+    "s_43633805152d3a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a8878eceb2f5c2ddd",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    },
+    "s_638886bdc74250": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f5723aa-6221-48d8-bae2-5050be485adc",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    },
+    "s_8cfb108d179745": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aef639b3c73d8a7e8",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
