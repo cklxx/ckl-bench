@@ -118,7 +118,7 @@ export function PackDetail({
                           <div className="flex items-center gap-2">
                             {onCancelRun && ["running", "pending"].includes(rs.status) && (
                               <Button variant="ghost" size="sm" onClick={() => onCancelRun(rs.runId)}>
-                                Cancel
+                                {t("common.cancel")}
                               </Button>
                             )}
                             <span className="tabular-nums text-muted-foreground">
@@ -211,7 +211,7 @@ export function PackDetail({
         {/* Footer */}
         <div className="flex shrink-0 gap-2 border-t px-6 py-4">
           {onAddCase && (
-            <Button variant="outline" onClick={onAddCase}>Add Case</Button>
+            <Button variant="outline" onClick={onAddCase}>{t("caseEditor.add")}</Button>
           )}
           <Button
             variant={!hasRunning && !hasCompleted ? "default" : "outline"}

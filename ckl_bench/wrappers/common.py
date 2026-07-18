@@ -13,6 +13,8 @@ import os
 import re
 import shlex
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 #: Dict keys tried, in order, when extracting text from a JSON agent output.
@@ -108,6 +110,30 @@ def build_exec_command(
         command.extend(shlex.split(extra))
     command.append(prompt)
     return command
+
+
+def run_exec_wrapper(prefix: str, default_command: str, model_flag: str, default_root: str) -> int:
+    """Run a Codex/DSX-style CLI wrapper using shared stdin/stdout plumbing."""
+    payload = json.loads(sys.stdin.read())
+    case_id = str(payload.get("case_id") or "case")
+    source_workspace = Path(payload["workspace_path"]) if payload.get("workspace_path") else None
+    workspace = prepare_workspace(case_id, source_workspace, f"{prefix}_WORKSPACE_DIR", default_root)
+    prompt = build_prompt(str(payload.get("prompt") or ""), workspace)
+    command = build_exec_command(prefix, default_command, model_flag, prompt)
+    timeout_s = int(float(payload.get("timeout_s") or os.environ.get(f"{prefix}_TIMEOUT_S") or 300))
+    completed = subprocess.run(
+        command, cwd=workspace, env=os.environ.copy(), text=True, capture_output=True, timeout=timeout_s,
+    )
+    if source_workspace:
+        sync_workspace(workspace, source_workspace)
+    print(json.dumps({
+        "text": extract_text(completed.stdout),
+        "returncode": completed.returncode,
+        "workspace": str(workspace),
+        "usage": parse_usage_stderr(completed.stderr),
+        "stderr_tail": diagnose_stderr(completed.stderr.strip()[-2000:]),
+    }, ensure_ascii=True))
+    return 0 if completed.returncode == 0 else completed.returncode
 
 
 def diagnose_stderr(stderr: str) -> str:

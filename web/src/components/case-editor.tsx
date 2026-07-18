@@ -124,7 +124,7 @@ export function CaseEditor({ caseId, createPack, onClose, onSaved }: CaseEditorP
   };
 
   const handleDelete = async () => {
-    if (!c || creating || !window.confirm(`Delete ${c.id}?`)) return;
+    if (!c || creating || !window.confirm(t("caseEditor.deleteConfirm", { id: c.id }))) return;
     setSaving(true);
     setError("");
     try {
@@ -263,7 +263,7 @@ export function CaseEditor({ caseId, createPack, onClose, onSaved }: CaseEditorP
         <div className="flex shrink-0 gap-2 border-t px-6 py-4">
           {!creating && (
             <Button variant="destructive" onClick={handleDelete} disabled={saving || !c}>
-              Delete
+              {t("caseEditor.delete")}
             </Button>
           )}
           <Button className="flex-1" onClick={handleSave} disabled={saving || !c}>

@@ -66,7 +66,7 @@ class RunDB:
 
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._conn = sqlite3.connect(
             str(db_path), check_same_thread=False, isolation_level=None
         )
@@ -93,60 +93,9 @@ class RunDB:
     # -- Runs ----------------------------------------------------------------
 
     def upsert_run(self, run: dict[str, Any]) -> None:
-        """Insert or update a run row from a run-state dict (as returned by
-        ``RunManager``).  Only writes fields that are present in *run*."""
-        summary = run.get("summary") or {}
-        progress = run.get("progress")
-        self._execute(
-            """
-            INSERT INTO runs (
-                run_id, status, adapter, adapter_display, judge, reviewer,
-                verifier, total, passed, failed, score, pass_rate, cost_usd,
-                total_tokens, started_at, completed_at, summary_json,
-                progress_json, error
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(run_id) DO UPDATE SET
-                status=excluded.status,
-                adapter=excluded.adapter,
-                adapter_display=excluded.adapter_display,
-                judge=excluded.judge,
-                reviewer=excluded.reviewer,
-                verifier=excluded.verifier,
-                total=excluded.total,
-                passed=excluded.passed,
-                failed=excluded.failed,
-                score=excluded.score,
-                pass_rate=excluded.pass_rate,
-                cost_usd=excluded.cost_usd,
-                total_tokens=excluded.total_tokens,
-                started_at=excluded.started_at,
-                completed_at=excluded.completed_at,
-                summary_json=excluded.summary_json,
-                progress_json=excluded.progress_json,
-                error=excluded.error
-            """,
-            (
-                run["run_id"],
-                run.get("status", "pending"),
-                summary.get("adapter") or run.get("adapter"),
-                summary.get("adapter_display") or run.get("adapter_display"),
-                summary.get("judge"),
-                summary.get("reviewer"),
-                summary.get("verifier"),
-                int(summary.get("total", 0)),
-                int(summary.get("passed", 0)),
-                int(summary.get("failed", 0)),
-                float(summary.get("score", 0)),
-                float(summary.get("pass_rate", 0)),
-                summary.get("cost_usd", summary.get("estimated_cost_usd")),
-                int((summary.get("usage") or {}).get("total_tokens", 0)),
-                run.get("started_at"),
-                run.get("completed_at"),
-                json.dumps(summary, ensure_ascii=True) if summary else None,
-                json.dumps(progress, ensure_ascii=True) if progress else None,
-                run.get("error"),
-            ),
-        )
+        """Insert or update a run row from a RunManager state dictionary."""
+        with self._lock:
+            self._upsert_run_unlocked(run)
 
     def update_run_status(self, run_id: str, status: str, **fields: Any) -> None:
         """Update a run's status and optional extra columns."""
@@ -188,42 +137,8 @@ class RunDB:
 
     def replace_results(self, run_id: str, results: list[dict[str, Any]]) -> None:
         """Replace all results for a run (delete + bulk insert)."""
-        self._execute("DELETE FROM results WHERE run_id = ?", (run_id,))
-        if not results:
-            return
-        rows = [
-            (
-                r["run_id"] if "run_id" in r else run_id,
-                r.get("case_id", ""),
-                int(r.get("passed", False)),
-                float(r.get("score", 0)),
-                json.dumps(r.get("capability"), ensure_ascii=True)
-                if r.get("capability")
-                else None,
-                r.get("difficulty"),
-                json.dumps(r.get("checks"), ensure_ascii=True)
-                if r.get("checks")
-                else None,
-                r.get("response_text"),
-                r.get("error"),
-                json.dumps(r.get("usage"), ensure_ascii=True)
-                if r.get("usage")
-                else None,
-                float(r.get("cost_usd", 0)) if r.get("cost_usd") is not None else None,
-                float(r.get("latency_ms", 0)) if r.get("latency_ms") is not None else None,
-            )
-            for r in results
-        ]
-        self._executemany(
-            """
-            INSERT INTO results (
-                run_id, case_id, passed, score, capability, difficulty,
-                checks_json, response_text, error, usage_json, cost_usd,
-                latency_ms
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            rows,
-        )
+        with self._lock:
+            self._replace_results_unlocked(run_id, results)
 
     def finish_run(self, run: dict[str, Any], results: list[dict[str, Any]]) -> None:
         """Atomically persist terminal metadata and replace all results."""

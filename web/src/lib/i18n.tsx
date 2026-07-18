@@ -91,6 +91,9 @@ const translations: Record<Locale, Record<string, Trans>> = {
       difficultyPh: "easy / medium / hard",
       invalidJson: "Expectations must be valid JSON array",
       loading: "Loading case...",
+      add: "Add Case",
+      delete: "Delete",
+      deleteConfirm: "Delete {{id}}?",
     },
     settings: {
       title: "Settings",
@@ -342,6 +345,9 @@ const translations: Record<Locale, Record<string, Trans>> = {
       difficultyPh: "easy / medium / hard",
       invalidJson: "期望值必须是合法的 JSON 数组",
       loading: "加载用例中...",
+      add: "添加用例",
+      delete: "删除",
+      deleteConfirm: "删除 {{id}}？",
     },
     settings: {
       title: "设置",

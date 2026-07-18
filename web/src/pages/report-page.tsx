@@ -6,7 +6,7 @@ import { CapabilityTable } from "@/components/capability-table";
 import { DifficultyTable } from "@/components/difficulty-table";
 import { CaseTable } from "@/components/case-table";
 import type { RunSummary, Result } from "@/lib/types";
-import { formatCost, formatNumber, shortId } from "@/lib/utils";
+import { formatCost, formatNumber, scoreVariant, shortId } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
 interface ReportPageProps {
@@ -53,7 +53,7 @@ export function ReportPage({ summary, results }: ReportPageProps) {
           title={t("report.score")}
           value={s.score}
           ci={s.score_ci}
-          variant={s.score != null ? (s.score >= 0.8 ? "success" : s.score >= 0.5 ? "warning" : "destructive") : "default"}
+          variant={s.score == null ? "default" : scoreVariant(s.score)}
         />
         <ScoreCard
           title={t("report.passRate")}

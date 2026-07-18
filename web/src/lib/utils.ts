@@ -34,14 +34,6 @@ export function scoreVariant(
   return "destructive";
 }
 
-export function intervalsOverlap(
-  ciA: [number, number] | undefined,
-  ciB: [number, number] | undefined
-): boolean | null {
-  if (!ciA || !ciB) return null;
-  return !(ciA[1] < ciB[0] || ciB[1] < ciA[0]);
-}
-
 /** Score achieved per dollar spent. Returns "—" when cost is missing or zero. */
 export function formatScorePerDollar(
   score: number | undefined | null,
