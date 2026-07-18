@@ -1,0 +1,31 @@
+ckl_bench/wrappers/codex.py
+  s_638886bdc74250::t_3753c200485468 2,5,9
+ckl_bench/wrappers/common.py
+  s_638886bdc74250::t_53169527fce46a 16-17,115-138
+ckl_bench/wrappers/dsx.py
+  s_638886bdc74250::t_2d98a684154b59 2,5,9
+scripts/codex_wrapper.py
+  s_638886bdc74250::t_87b23eaadfa528 2-3
+scripts/dsx_wrapper.py
+  s_638886bdc74250::t_ca0737e2c0661b 2-3
+web/src/pages/report-page.tsx
+  s_638886bdc74250::t_6175354d3363ae 9,56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "47d83ce35b6f0f1d4cb3ddda281a06e26b1d121d",
+  "prompts": {},
+  "sessions": {
+    "s_638886bdc74250": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f5723aa-6221-48d8-bae2-5050be485adc",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
