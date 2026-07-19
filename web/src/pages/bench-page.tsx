@@ -300,9 +300,13 @@ export function BenchPage() {
     }
   };
 
+  // Only completed runs have valid scores; sort oldest-first so the trend
+  // chart reads left-to-right in time and analysis-cards can take the last
+  // two entries as "latest" and "previous".
   const summaries = runs
-    .map((r) => r.summary)
-    .filter((s): s is NonNullable<typeof s> => s != null);
+    .filter((r) => r.status === "completed" && r.summary != null)
+    .sort((a, b) => (a.started_at ?? 0) - (b.started_at ?? 0))
+    .map((r) => r.summary as NonNullable<typeof r.summary>);
 
   // Fetch results for completed runs so FailureAnalysis can show check-type
   // and error-pattern breakdowns (the list endpoint doesn't include results).
