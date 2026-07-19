@@ -1,0 +1,23 @@
+ckl_bench/web/index.html
+  s_46e774e4d14e18::t_ead53c2a77752a 24,32,48,55-56,155,160,162,166,206,208,211
+web/src/pages/bench-page.tsx
+  s_46e774e4d14e18::t_47905574699ce5 303-305,307-309
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "eebfe389c1293815800632a7721f307f9049eab3",
+  "prompts": {},
+  "sessions": {
+    "s_46e774e4d14e18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8457d765-fbc1-4ec0-aa23-d78bf26c1e54",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
