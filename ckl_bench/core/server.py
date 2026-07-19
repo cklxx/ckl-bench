@@ -411,11 +411,23 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
 
     def _create_case(self, body: dict[str, Any]) -> None:
         case = validate_case_dict(body)
+        pack = body.get("pack")
         with self.bench_server._case_lock:
             if any(existing.id == case.id for existing in self._all_cases()):
                 self._error(409, f"case id already exists: {case.id}")
                 return
-            target = self.bench_server.cases_dir / DEFAULT_CASE_FILE
+            if pack:
+                # Validate pack name to prevent path traversal.
+                if not isinstance(pack, str) or "/" in pack or ".." in pack or pack.startswith("."):
+                    self._error(400, f"invalid pack name: {pack}")
+                    return
+                pack_dir = self.bench_server.cases_dir / pack
+                if not pack_dir.is_dir():
+                    self._error(400, f"pack does not exist: {pack}")
+                    return
+                target = pack_dir / DEFAULT_CASE_FILE
+            else:
+                target = self.bench_server.cases_dir / DEFAULT_CASE_FILE
             existing = load_cases([str(target)]) if target.exists() else []
             write_cases(target, [*existing, case])
         self._json(case_to_dict(case), status=201)
@@ -471,12 +483,13 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
         self._json({"run_id": run_id, "status": run["status"], "progress": run.get("progress", {})})
 
     def _launch_run(self, body: dict[str, Any]) -> None:
-        adapter_name = body.get("adapter", "mock")
+        adapter_name = body.get("adapter")
+        adapter_target = _optional_str(body, "adapter_target")
         adapter_config = body.get("adapter_config") or body.get("config") or {}
         case_paths = body.get("case_paths")
         case_ids = body.get("case_ids")
-        if not isinstance(adapter_name, str) or not adapter_name:
-            raise ValueError("adapter must be a non-empty string")
+        if not adapter_target and (not isinstance(adapter_name, str) or not adapter_name):
+            raise ValueError("adapter or adapter_target must be a non-empty string")
         if not isinstance(adapter_config, dict):
             raise ValueError("adapter_config must be an object")
         for name, value in (("case_paths", case_paths), ("case_ids", case_ids)):
@@ -496,6 +509,7 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
             run_id = self.bench_server.manager.start_run(
                 adapter_name=adapter_name,
                 adapter_config=adapter_config,
+                adapter_target=adapter_target,
                 case_paths=case_paths,
                 case_ids=case_ids,
                 repeat=repeat,

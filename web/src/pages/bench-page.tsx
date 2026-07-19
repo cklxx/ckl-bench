@@ -55,6 +55,10 @@ function packFromPaths(paths: string[] | undefined | null): string | null {
   return m ? m[1] : null;
 }
 
+// Built-in CLI adapters run through the command wrapper; discovered providers
+// are launched by their registry target instead.
+const BUILTIN_CLI_ADAPTER_KEYS = new Set(["claude-code", "codex", "dsx"]);
+
 export function BenchPage() {
   const t = useT();
   const [config, setConfig] = useState<ConfigInfo | null>(null);
@@ -64,7 +68,7 @@ export function BenchPage() {
   const [runs, setRuns] = useState<RunInfo[]>([]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [editingCaseId, setEditingCaseId] = useState<string | null>(null);
-  const [creatingCasePack, setCreatingCasePack] = useState<string | null | undefined>(undefined);
+  const [creatingCasePack, setCreatingCasePack] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [detailPack, setDetailPack] = useState<PackInfo | null>(null);
   const [reportTab, setReportTab] = useState("overview");
@@ -215,17 +219,22 @@ export function BenchPage() {
     const adapterConfig = settings?.adapters[adapterKey] || {};
     const pack = packs.find((p) => p.name === packName);
     const caseCount = pack?.cases.length || 0;
-    const params: any = {
-      adapter: "command",
-      adapter_config: {
-        command: adapterConfig.command || "",
-        ...(adapterConfig.model && { model: adapterConfig.model }),
-      },
-      case_paths: [`cases/${packName}`],
-      repeat: settings?.defaults.repeat ?? 1,
-      concurrency: settings?.defaults.concurrency ?? 1,
-      seed: settings?.defaults.seed ?? 0,
-    };
+    const isBuiltin = BUILTIN_CLI_ADAPTER_KEYS.has(adapterKey);
+    const params: any = isBuiltin
+      ? {
+          adapter: "command",
+          adapter_config: {
+            command: adapterConfig.command || "",
+            ...(adapterConfig.model && { model: adapterConfig.model }),
+          },
+        }
+      : {
+          adapter_target: adapterKey,
+        };
+    params.case_paths = [`cases/${packName}`];
+    params.repeat = settings?.defaults.repeat ?? 1;
+    params.concurrency = settings?.defaults.concurrency ?? 1;
+    params.seed = settings?.defaults.seed ?? 0;
     if (settings?.defaults.judge) params.judge = settings.defaults.judge;
     if (settings?.defaults.reviewer) params.reviewer = settings.defaults.reviewer;
     if (settings?.defaults.verifier) params.verifier = settings.defaults.verifier;
@@ -238,7 +247,7 @@ export function BenchPage() {
           progress: { total_cases: caseCount, cases: {} },
           summary: {
             run_id: result.run_id,
-            adapter: "command",
+            adapter: isBuiltin ? "command" : adapterKey,
             adapter_display: adapterKey,
             manifest: { case_paths: [`cases/${packName}`] },
             total: 0,
@@ -320,7 +329,7 @@ export function BenchPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-10 flex h-12 items-center justify-between border-b bg-background/80 px-4 backdrop-blur">
+      <header className="sticky top-0 z-10 flex h-12 items-center justify-between bg-background/80 px-4 backdrop-blur">
         <div className="flex items-center gap-2">
           <span className="text-sm font-bold tracking-tight">ckl-bench</span>
           <Badge variant="muted" className="text-[10px] uppercase">
@@ -328,7 +337,7 @@ export function BenchPage() {
           </Badge>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setCreatingCasePack(null)}>
+          <Button variant="outline" size="sm" onClick={() => setCreatingCasePack("")}>
             New Case
           </Button>
           <Button
@@ -348,7 +357,7 @@ export function BenchPage() {
           >
             <SettingsIcon className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={refresh}>
+          <Button variant="ghost" size="icon" onClick={refresh} aria-label={t("common.refresh")}>
             <RefreshCw className="h-4 w-4" />
           </Button>
           <LanguageToggle />
@@ -483,7 +492,7 @@ export function BenchPage() {
         createPack={creatingCasePack}
         onClose={() => {
           setEditingCaseId(null);
-          setCreatingCasePack(undefined);
+          setCreatingCasePack(null);
         }}
         onSaved={refresh}
       />

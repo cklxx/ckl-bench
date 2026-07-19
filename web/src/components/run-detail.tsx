@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { getRun } from "@/lib/api";
 import type { Result, RunInfo } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { formatPercent, formatNumber, scoreVariant } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { useCopyToast } from "@/lib/use-copy-toast";
@@ -35,14 +36,17 @@ export function RunDetail({ runId, onClose }: RunDetailProps) {
   const adapter = summary?.adapter_display || summary?.adapter || "unknown";
 
   return (
-    <Sheet open={!!runId} onClose={onClose} side="right" width="60%">
+    <Sheet open={!!runId} onClose={onClose} side="right" width="60%" titleId="run-detail-title">
       <div className="flex flex-1 min-h-0 flex-col">
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
+        <div className="flex h-12 shrink-0 items-center justify-between px-6">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold">{t("runDetail.title")}</h2>
+            <h2 id="run-detail-title" className="text-base font-semibold">{t("runDetail.title")}</h2>
             <Badge variant="secondary">{adapter}</Badge>
           </div>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("common.close")}>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Body */}
@@ -107,7 +111,7 @@ export function RunDetail({ runId, onClose }: RunDetailProps) {
                   {results.map((r) => (
                     <div
                       key={r.case_id}
-                      className="rounded-lg border px-4 py-3.5 space-y-2"
+                      className="rounded-lg bg-muted/40 px-4 py-3.5 space-y-2"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm font-medium truncate">

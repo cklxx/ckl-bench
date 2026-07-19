@@ -16,7 +16,7 @@ interface SettingsDrawerProps {
   onSaved: (settings: Settings) => void;
 }
 
-const FALLBACK_ADAPTERS = [
+const BUILTIN_CLI_ADAPTERS = [
   { key: "claude-code", label: "Claude Code", icon: "CC" },
   { key: "codex", label: "Codex", icon: "CX" },
   { key: "dsx", label: "DSX", icon: "DS" },
@@ -40,13 +40,14 @@ export function SettingsDrawer({ open, value, providers = [], onClose, onSaved }
     }
   }, [open, value]);
 
-  const adapterDefs = providers.length
-    ? providers.map((provider) => ({
-        key: provider.namespace,
-        label: provider.namespace,
-        icon: provider.namespace.slice(0, 2).toUpperCase(),
-      }))
-    : FALLBACK_ADAPTERS;
+  const adapterDefs = [
+    ...BUILTIN_CLI_ADAPTERS,
+    ...providers.map((provider) => ({
+      key: provider.namespace,
+      label: provider.namespace,
+      icon: provider.namespace.slice(0, 2).toUpperCase(),
+    })),
+  ].filter((def, index, defs) => defs.findIndex((item) => item.key === def.key) === index);
 
   // Clean up abort + timer on close.
   useEffect(() => {
@@ -61,6 +62,16 @@ export function SettingsDrawer({ open, value, providers = [], onClose, onSaved }
       setElapsed(0);
     }
   }, [open]);
+
+  // Close on Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -159,10 +170,15 @@ export function SettingsDrawer({ open, value, providers = [], onClose, onSaved }
   return (
     <div className="fixed inset-0 z-50 flex">
       <div className="flex-1 bg-black/30" onClick={onClose} />
-      <div className="flex w-[420px] flex-col bg-background shadow-lg">
-        <div className="flex h-12 items-center justify-between border-b px-4">
-          <h2 className="text-base font-semibold">{t("settings.title")}</h2>
-          <Button variant="ghost" size="icon" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+        className="flex w-[420px] flex-col bg-background shadow-lg"
+      >
+        <div className="flex h-12 items-center justify-between px-4">
+          <h2 id="settings-title" className="text-base font-semibold">{t("settings.title")}</h2>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("common.close")}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -188,10 +204,10 @@ export function SettingsDrawer({ open, value, providers = [], onClose, onSaved }
                     key={def.key}
                     onClick={() => toggleActive(def.key)}
                     className={cn(
-                      "flex w-full items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors",
+                      "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                       active
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border hover:bg-muted"
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted/40 hover:bg-muted"
                     )}
                   >
                     <Badge variant={active ? "default" : "outline"} className="text-[10px]">
@@ -375,7 +391,7 @@ export function SettingsDrawer({ open, value, providers = [], onClose, onSaved }
         </div>
 
         {/* Footer */}
-        <div className="border-t p-4">
+        <div className="p-4">
           <Button className="w-full" onClick={handleSave} disabled={saving}>
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />

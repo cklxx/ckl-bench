@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet } from "@/components/ui/sheet";
-import { Save, Loader2 } from "lucide-react";
+import { Save, Loader2, X } from "lucide-react";
 import { useT } from "@/lib/i18n";
 
 interface CaseEditorProps {
@@ -112,8 +112,14 @@ export function CaseEditor({ caseId, createPack, onClose, onSaved }: CaseEditorP
     setSaving(true);
     try {
       const payload = { ...c, expectations };
-      if (creating) await createCase(payload);
-      else await updateCase(c.id, payload);
+      if (creating) {
+        // Send the target pack so the backend writes the case into the
+        // correct cases/<pack>/ directory instead of the root custom.jsonl.
+        if (createPack) await createCase({ ...payload, pack: createPack });
+        else await createCase(payload);
+      } else {
+        await updateCase(c.id, payload);
+      }
       onSaved?.();
       onClose();
     } catch (e) {
@@ -139,11 +145,14 @@ export function CaseEditor({ caseId, createPack, onClose, onSaved }: CaseEditorP
   };
 
   return (
-    <Sheet open={!!caseId || creating} onClose={onClose} side="right" width="56%" zIndex={51}>
+    <Sheet open={!!caseId || creating} onClose={onClose} side="right" width="56%" zIndex={51} titleId="case-editor-title">
       <div className="flex flex-1 min-h-0 flex-col">
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
-          <h2 className="text-base font-semibold">{t("caseEditor.title")}</h2>
+        <div className="flex h-12 shrink-0 items-center justify-between px-6">
+          <h2 id="case-editor-title" className="text-base font-semibold">{t("caseEditor.title")}</h2>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("common.close")}>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Body */}
@@ -260,7 +269,7 @@ export function CaseEditor({ caseId, createPack, onClose, onSaved }: CaseEditorP
         </div>
 
         {/* Footer */}
-        <div className="flex shrink-0 gap-2 border-t px-6 py-4">
+        <div className="flex shrink-0 gap-2 px-6 py-4">
           {!creating && (
             <Button variant="destructive" onClick={handleDelete} disabled={saving || !c}>
               {t("caseEditor.delete")}

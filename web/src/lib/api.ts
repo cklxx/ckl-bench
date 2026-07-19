@@ -37,7 +37,7 @@ export function getCase(id: string): Promise<CaseDetail> {
   return request<CaseDetail>(`/api/cases/${encodeURIComponent(id)}`);
 }
 
-export function createCase(c: Partial<CaseDetail>): Promise<CaseDetail> {
+export function createCase(c: Partial<CaseDetail> & { pack?: string }): Promise<CaseDetail> {
   return request<CaseDetail>("/api/cases", { method: "POST", body: JSON.stringify(c) });
 }
 
@@ -72,6 +72,7 @@ export function cancelRun(runId: string): Promise<{ run_id: string; status: stri
 
 export interface LaunchRunParams {
   adapter?: string;
+  adapter_target?: string;
   adapter_config?: Record<string, any>;
   case_paths?: string[];
   case_ids?: string[];

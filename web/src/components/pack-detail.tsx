@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet } from "@/components/ui/sheet";
-import { PlayCircle, Box } from "lucide-react";
+import { PlayCircle, Box, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { useCopyToast } from "@/lib/use-copy-toast";
@@ -57,21 +57,24 @@ export function PackDetail({
   const hasCompleted = runStates.some((r) => r.status === "completed");
 
   return (
-    <Sheet open={!!pack} onClose={onClose} side="right" width="75%">
+    <Sheet open={!!pack} onClose={onClose} side="right" width="75%" titleId="pack-detail-title">
       <div className="flex flex-1 min-h-0 flex-col">
         {/* Header */}
-        <div className="flex h-12 shrink-0 items-center justify-between border-b px-6">
+        <div className="flex h-12 shrink-0 items-center justify-between px-6">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
               <Box className="h-4 w-4" />
             </div>
-            <h2 className="text-base font-semibold capitalize">{pack?.name}</h2>
+            <h2 id="pack-detail-title" className="text-base font-semibold capitalize">{pack?.name}</h2>
             {pack && (
               <Badge variant="secondary" className="text-xs">
                 {pack.cases.length}
               </Badge>
             )}
           </div>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label={t("common.close")}>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Body */}
@@ -159,8 +162,16 @@ export function PackDetail({
                   {pack.cases.map((c) => (
                     <div
                       key={c.id}
-                      className="rounded-lg border px-4 py-3 text-sm hover:bg-muted/40 cursor-pointer transition-colors"
+                      className="rounded-lg bg-card px-4 py-3 text-sm shadow-sm hover:bg-muted/40 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      role="button"
+                      tabIndex={0}
                       onClick={() => onEditCase(c.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          onEditCase(c.id);
+                        }
+                      }}
                     >
                       <div className="mb-2 flex items-start justify-between gap-3">
                         <span className="font-medium text-foreground leading-snug">
@@ -209,7 +220,7 @@ export function PackDetail({
         </div>
 
         {/* Footer */}
-        <div className="flex shrink-0 gap-2 border-t px-6 py-4">
+        <div className="flex shrink-0 gap-2 px-6 py-4">
           {onAddCase && (
             <Button variant="outline" onClick={onAddCase}>{t("caseEditor.add")}</Button>
           )}

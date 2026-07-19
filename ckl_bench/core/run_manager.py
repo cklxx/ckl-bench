@@ -148,8 +148,9 @@ class RunManager:
     def start_run(
         self,
         *,
-        adapter_name: str,
+        adapter_name: str | None = None,
         adapter_config: dict[str, Any] | None = None,
+        adapter_target: str | None = None,
         case_paths: list[str] | None = None,
         case_ids: list[str] | None = None,
         repeat: int = 1,
@@ -175,9 +176,17 @@ class RunManager:
         if not cases:
             raise CaseValidationError("no cases selected for run")
 
-        # Build adapter.
-        config = dict(adapter_config or {})
-        adapter = build_adapter(adapter_name, config)
+        # Build adapter. Prefer a registry target (e.g. "deepseekv4") over the
+        # raw adapter_name/config pair so discovered providers run correctly.
+        if adapter_target:
+            adapter = _resolve(adapter_target)
+            if adapter is None:
+                raise ValueError(f"unknown provider target: {adapter_target}")
+        else:
+            if not adapter_name:
+                raise ValueError("adapter_name or adapter_target is required")
+            config = dict(adapter_config or {})
+            adapter = build_adapter(adapter_name, config)
 
         # Judge/reviewer/verifier adapters (reviewer & verifier are optional
         # adversarial-pipeline stages that challenge and finalise the judge).

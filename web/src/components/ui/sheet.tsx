@@ -8,6 +8,7 @@ interface SheetProps {
   side?: "left" | "right";
   width?: string; // e.g. "75%", "520px"
   zIndex?: number; // stacked sheets: higher = on top
+  titleId?: string; // id of the heading element, for aria-labelledby
   children: React.ReactNode;
 }
 
@@ -22,6 +23,7 @@ export function Sheet({
   side = "right",
   width = "75%",
   zIndex = 50,
+  titleId,
   children,
 }: SheetProps) {
   // Lock body scroll while open; shared counter handles stacked sheets.
@@ -30,6 +32,16 @@ export function Sheet({
     lockScroll();
     return () => unlockScroll();
   }, [open]);
+
+  // Close on Escape.
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -44,6 +56,9 @@ export function Sheet({
       />
       {/* Panel — slides in from the chosen side; scrolls internally */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className={cn(
           "absolute top-0 bottom-0 flex flex-col bg-background shadow-xl",
           isRight ? "right-0" : "left-0",
