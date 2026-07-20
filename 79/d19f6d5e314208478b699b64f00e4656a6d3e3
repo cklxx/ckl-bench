@@ -1,0 +1,21 @@
+ckl_bench/core/runner.py
+  s_957c54c34b2975::t_90f032edb93147 27,202,204,253-273,385,451-496,498-500,554-555,560
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "79d19f6d5e314208478b699b64f00e4656a6d3e3",
+  "prompts": {},
+  "sessions": {
+    "s_957c54c34b2975": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9433d313-d123-42c3-abb6-25c75ac1f5ea",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
