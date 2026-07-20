@@ -1,0 +1,27 @@
+ckl_bench/adapters/base.py
+  s_957c54c34b2975::t_23a2af149ba41b 23
+ckl_bench/adapters/command.py
+  s_957c54c34b2975::t_d55102d3c90395 117-121,125,130
+ckl_bench/core/grading.py
+  s_957c54c34b2975::t_aeae5d3ef5deb4 453-459,461,488-509,526-541
+ckl_bench/core/runner.py
+  s_957c54c34b2975::t_c02117d03a389e 310-314
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "932a38f8762e5de982f4550a6635ff94ad572c97",
+  "prompts": {},
+  "sessions": {
+    "s_957c54c34b2975": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9433d313-d123-42c3-abb6-25c75ac1f5ea",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
