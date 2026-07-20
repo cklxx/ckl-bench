@@ -114,12 +114,17 @@ class CommandAdapter:
                     "input_tokens": int(usage.get("input_tokens", 0)),
                     "output_tokens": int(usage.get("output_tokens", 0)),
                 }
+            # Command agents may write artifacts to a workspace; surface the
+            # path so graders (e.g. code_test) can read files the agent created
+            # instead of trying to extract code from the response text.
+            ws = parsed.get("workspace")
+            workspace_path = Path(ws) if isinstance(ws, str) and ws else None
             for key in ("text", "response", "output", "final", "answer"):
                 value = parsed.get(key)
                 if isinstance(value, str):
-                    return GenerateResponse(text=value, raw=parsed, metadata=metadata)
+                    return GenerateResponse(text=value, raw=parsed, metadata=metadata, workspace_path=workspace_path)
             print(
                 "warning: command output JSON did not contain a text field; using raw stdout",
                 file=sys.stderr,
             )
-            return GenerateResponse(text=stdout, raw=parsed, metadata=metadata)
+            return GenerateResponse(text=stdout, raw=parsed, metadata=metadata, workspace_path=workspace_path)

@@ -450,10 +450,15 @@ def _extract_choice(text: str, choices: list[str], case_sensitive: bool) -> str 
     return best
 
 
-def _extract_code(text: str) -> str:
-    """Strip a single fenced code block (```lang ... ```) if present."""
+def _extract_code(text: str) -> str | None:
+    """Strip a single fenced code block (```lang ... ```) if present.
+
+    Returns ``None`` when no fenced block is found so callers can distinguish
+    "extracted code" from "fell back to raw text" (the latter is almost never
+    valid Python for code_test checks).
+    """
     fence = re.search(r"```[a-zA-Z0-9_+-]*\n(.*?)```", text, flags=re.S)
-    return fence.group(1) if fence else text
+    return fence.group(1) if fence else None
 
 
 def _code_test(
@@ -480,8 +485,28 @@ def _code_test(
             _write_safe(work, str(name), str(content))
         response_file = expectation.get("response_file")
         if response_file:
-            payload = _extract_code(response_text) if expectation.get("extract_code") else response_text
-            _write_safe(work, str(response_file), payload)
+            if expectation.get("extract_code"):
+                payload = _extract_code(response_text)
+                if payload is None:
+                    # No fenced code block in the response. Command agents
+                    # (e.g. dsx) write code to a file in the workspace instead
+                    # of returning it in the text. If the expected file exists,
+                    # use it; otherwise search the workspace for a .py file the
+                    # agent may have written under a different name.
+                    target = work / str(response_file)
+                    if target.exists():
+                        payload = None
+                    else:
+                        found = _find_agent_file(work, ".py")
+                        if found is not None:
+                            shutil.copy2(found, target)
+                            payload = None
+                        else:
+                            payload = response_text
+            else:
+                payload = response_text
+            if payload is not None:
+                _write_safe(work, str(response_file), payload)
         result = run_python_script(script, cwd=work, timeout_s=timeout_s, memory_mb=memory_mb)
     finally:
         if created_tmp:
@@ -496,6 +521,22 @@ def _code_test(
         if tail:
             detail += " | " + " / ".join(line.strip() for line in tail)
     return _EvalOutcome(passed, 1.0 if passed else 0.0, detail)
+
+
+def _find_agent_file(work: Path, suffix: str) -> Path | None:
+    """Find the first file with *suffix* in *work* (excluding caches).
+
+    Command agents may write code under a name they chose (e.g. the function
+    name) rather than the ``response_file`` the grader expects. This locates
+    the agent's file so it can be copied to the expected name.
+    """
+    if not work.is_dir():
+        return None
+    candidates = sorted(
+        p for p in work.rglob(f"*{suffix}")
+        if p.is_file() and "__pycache__" not in p.parts
+    )
+    return candidates[0] if candidates else None
 
 
 def _write_safe(root: Path, name: str, content: str) -> None:

@@ -307,6 +307,11 @@ def _run_attempt_body(
             raw_response = response.raw
             usage = _usage_from_response(response)
             model = (response.metadata or {}).get("model", model)
+            # Command agents may create their own workspace and write files
+            # there; use it for grading so code_test can read agent artifacts
+            # instead of trying to extract code from the response text.
+            if response.workspace_path is not None:
+                workspace_path = response.workspace_path
         except Exception as exc:  # noqa: BLE001 - one bad attempt should produce evidence.
             error = f"{type(exc).__name__}: {exc}"
         if key is not None and error is None:

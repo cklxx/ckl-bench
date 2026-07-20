@@ -20,6 +20,7 @@ class GenerateResponse:
     text: str
     raw: Any = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    workspace_path: Path | None = None
 
 
 class ModelAdapter(Protocol):
