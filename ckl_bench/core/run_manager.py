@@ -117,9 +117,11 @@ class RunManager:
         # SQLite persistence: query-optimized cache over the JSON files on disk
         # (which remain the canonical export).  Rebuild from disk on first run.
         self._db: RunDB | None = None
+        self._runs_dir_mtime: float | None = None
         if db_path is not None:
             self._db = RunDB(db_path)
             self._db.rebuild_from_disk(runs_dir)
+            self._runs_dir_mtime = self._runs_dir_mtime_or_none()
 
     # -- Listener management ------------------------------------------------
 
@@ -327,6 +329,12 @@ class RunManager:
 
     # -- Query API ----------------------------------------------------------
 
+    def _runs_dir_mtime_or_none(self) -> float | None:
+        try:
+            return self._runs_dir.stat().st_mtime
+        except OSError:
+            return None
+
     def list_runs(self) -> list[dict[str, Any]]:
         """Return all runs: in-memory active runs plus completed runs from DB."""
         with self._lock:
@@ -336,6 +344,12 @@ class RunManager:
             }
         # Completed runs from SQLite (or disk as fallback) merged with active.
         if self._db is not None:
+            # Pick up runs written to disk by CLI invocations outside this server.
+            # Only rescan when the runs directory mtime changed (cheap guard).
+            current_mtime = self._runs_dir_mtime_or_none()
+            if current_mtime != self._runs_dir_mtime:
+                self._db.sync_from_disk(self._runs_dir)
+                self._runs_dir_mtime = current_mtime
             completed = self._db.list_runs()
         else:
             completed = collect_runs(self._runs_dir)

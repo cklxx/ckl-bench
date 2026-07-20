@@ -78,6 +78,7 @@ const translations: Record<Locale, Record<string, Trans>> = {
       cases: "Cases ({{count}})",
       loading: "Loading run...",
       empty: "No case results available for this run.",
+      response: "Agent Response",
     },
     caseEditor: {
       title: "Edit Case",
@@ -334,6 +335,7 @@ const translations: Record<Locale, Record<string, Trans>> = {
       cases: "用例 ({{count}})",
       loading: "加载运行中...",
       empty: "本次运行暂无可用的用例结果。",
+      response: "模型回复",
     },
     caseEditor: {
       title: "编辑用例",

@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shlex
 import shutil
 from pathlib import Path
 
@@ -89,25 +88,6 @@ def parse_usage_stderr(stderr: str) -> dict[str, int] | None:
         total = int(m.group(1))
         return {"total_tokens": total, "input_tokens": 0, "output_tokens": 0}
     return None
-
-
-def build_exec_command(
-    prefix: str,
-    default_command: str,
-    model_flag: str,
-    prompt: str,
-) -> list[str]:
-    """Build a dsx/codex-style ``exec`` command from ``CKL_<PREFIX>_*`` env vars."""
-    command = shlex.split(os.environ.get(f"{prefix}_COMMAND", default_command))
-    command.extend(["exec", "--skip-git-repo-check"])
-    model = os.environ.get(f"{prefix}_MODEL")
-    if model:
-        command.extend([model_flag, model])
-    extra = os.environ.get(f"{prefix}_EXTRA_ARGS")
-    if extra:
-        command.extend(shlex.split(extra))
-    command.append(prompt)
-    return command
 
 
 def diagnose_stderr(stderr: str) -> str:

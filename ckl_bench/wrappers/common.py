@@ -102,6 +102,11 @@ def build_exec_command(
     """Build a dsx/codex-style ``exec`` command from ``CKL_<PREFIX>_*`` env vars."""
     command = shlex.split(os.environ.get(f"{prefix}_COMMAND", default_command))
     command.extend(["exec", "--skip-git-repo-check"])
+    # Default to workspace-write so the agent can edit case files; override with
+    # CKL_<PREFIX>_SANDBOX (set empty to omit the flag and use the CLI default).
+    sandbox = os.environ.get(f"{prefix}_SANDBOX", "workspace-write")
+    if sandbox:
+        command.extend(["--sandbox", sandbox])
     model = os.environ.get(f"{prefix}_MODEL")
     if model:
         command.extend([model_flag, model])

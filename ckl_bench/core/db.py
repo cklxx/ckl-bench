@@ -190,36 +190,63 @@ class RunDB:
 
     # -- Convenience ---------------------------------------------------------
 
+    def run_ids(self) -> set[str]:
+        """Return the set of run_ids currently in the DB (no JSON deserialization)."""
+        rows = self._execute("SELECT run_id FROM runs").fetchall()
+        return {row[0] for row in rows}
+
     def rebuild_from_disk(self, runs_dir: Path) -> int:
         """Re-import all completed runs from disk. Returns count imported."""
         from .run_manager import collect_runs
 
-        imported = 0
         seen: set[str] = set()
         for run in collect_runs(runs_dir):
-            run.setdefault("status", "completed")
-            run_id = run["run_id"]
-            summary_path = runs_dir / run_id / "summary.json"
-            if summary_path.exists() and run.get("started_at") is None:
-                run["started_at"] = summary_path.stat().st_mtime
-            results: list[dict[str, Any]] = []
-            results_path = runs_dir / run_id / "results.jsonl"
-            if results_path.exists():
-                for line in results_path.read_text(encoding="utf-8").splitlines():
-                    try:
-                        results.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        continue
-            self.finish_run(run, results)
-            seen.add(run_id)
-            imported += 1
+            self._import_run_from_disk(runs_dir, run)
+            seen.add(run["run_id"])
         with self._lock:
             if seen:
                 placeholders = ",".join("?" for _ in seen)
                 self._conn.execute(f"DELETE FROM runs WHERE run_id NOT IN ({placeholders})", tuple(sorted(seen)))
             else:
                 self._conn.execute("DELETE FROM runs")
+        return len(seen)
+
+    def sync_from_disk(self, runs_dir: Path) -> int:
+        """Import runs from disk that are not yet in the DB. Returns count imported."""
+        from .run_manager import collect_runs
+
+        existing = self.run_ids()
+        imported = 0
+        for run in collect_runs(runs_dir):
+            if run["run_id"] in existing:
+                continue
+            self._import_run_from_disk(runs_dir, run)
+            imported += 1
         return imported
+
+    def _import_run_from_disk(self, runs_dir: Path, run: dict[str, Any]) -> None:
+        """Hydrate a single run dict from its on-disk summary/results and persist it."""
+        run.setdefault("status", "completed")
+        run_id = run["run_id"]
+        summary_path = runs_dir / run_id / "summary.json"
+        if run.get("started_at") is None:
+            try:
+                run["started_at"] = summary_path.stat().st_mtime
+            except OSError:
+                pass
+        results: list[dict[str, Any]] = []
+        results_path = runs_dir / run_id / "results.jsonl"
+        if results_path.exists():
+            with results_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        results.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+        self.finish_run(run, results)
 
     @staticmethod
     def _row_to_run(row: dict[str, Any]) -> dict[str, Any]:

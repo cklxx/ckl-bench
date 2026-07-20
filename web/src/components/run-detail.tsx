@@ -20,6 +20,7 @@ export function RunDetail({ runId, onClose }: RunDetailProps) {
   const [run, setRun] = useState<RunInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [expandedCase, setExpandedCase] = useState<string | null>(null);
 
   useEffect(() => {
     if (!runId) return;
@@ -108,19 +109,30 @@ export function RunDetail({ runId, onClose }: RunDetailProps) {
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     {t("runDetail.cases", { count: results.length })}
                   </h3>
-                  {results.map((r) => (
+                  {results.map((r) => {
+                    const isOpen = expandedCase === r.case_id;
+                    return (
                     <div
                       key={r.case_id}
                       className="rounded-lg bg-muted/40 px-4 py-3.5 space-y-2"
                     >
-                      <div className="flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        className="flex w-full items-center justify-between gap-3 text-left"
+                        onClick={() => setExpandedCase(isOpen ? null : r.case_id)}
+                      >
                         <span className="text-sm font-medium truncate">
                           {r.case_id}
                         </span>
-                        <Badge variant={scoreVariant(r.score)}>
-                          {formatPercent(r.score, 0)}
-                        </Badge>
-                      </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge variant={scoreVariant(r.score)}>
+                            {formatPercent(r.score, 0)}
+                          </Badge>
+                          <span className="text-muted-foreground text-xs transition-transform" style={{ transform: isOpen ? "rotate(90deg)" : "none" }}>
+                            ▶
+                          </span>
+                        </div>
+                      </button>
                       {r.capability && r.capability.length > 0 && (
                         <div className="flex gap-1.5">
                           {r.capability.map((c) => (
@@ -140,20 +152,20 @@ export function RunDetail({ runId, onClose }: RunDetailProps) {
                           {r.checks.map((ch, i) => (
                             <div
                               key={i}
-                              className="flex items-center gap-2 text-xs"
+                              className="flex items-start gap-2 text-xs"
                             >
                               <span
                                 className={
                                   ch.passed
-                                    ? "text-success"
-                                    : "text-destructive"
+                                    ? "text-success shrink-0"
+                                    : "text-destructive shrink-0"
                                 }
                               >
                                 {ch.passed ? "✓" : "✗"}
                               </span>
-                              <span className="font-medium">{ch.kind}</span>
+                              <span className="font-medium shrink-0">{ch.kind}</span>
                               {ch.detail && (
-                                <span className="text-muted-foreground truncate">
+                                <span className={isOpen ? "text-muted-foreground break-words whitespace-pre-wrap" : "text-muted-foreground truncate"}>
                                   {ch.detail}
                                 </span>
                               )}
@@ -162,12 +174,23 @@ export function RunDetail({ runId, onClose }: RunDetailProps) {
                         </div>
                       )}
                       {r.error && (
-                        <div className="text-xs text-destructive break-words">
+                        <div className="text-xs text-destructive break-words whitespace-pre-wrap">
                           {r.error}
                         </div>
                       )}
+                      {isOpen && r.response_text && (
+                        <div className="mt-2 border-t border-border pt-2">
+                          <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
+                            {t("runDetail.response")}
+                          </div>
+                          <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-60 overflow-y-auto">
+                            {r.response_text}
+                          </pre>
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
