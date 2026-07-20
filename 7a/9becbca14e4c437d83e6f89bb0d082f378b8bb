@@ -1,0 +1,29 @@
+ckl_bench/core/db.py
+  s_957c54c34b2975::t_aecb7d4a2c9627 193-197,204-205,212-224,227-250
+ckl_bench/core/run_manager.py
+  s_957c54c34b2975::t_d77c528582906b 120,124,332-337,347-352
+ckl_bench/wrappers/common.py
+  s_957c54c34b2975::t_dc7447aff5fbe7 105-109
+web/src/components/run-detail.tsx
+  s_957c54c34b2975::t_47041d5dedeeba 23,112-114,119-123,127-135,155,160-161,166,168,177,181-190,192-193
+web/src/lib/i18n.tsx
+  s_957c54c34b2975::t_90c85ad6d8d985 81,338
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7a9becbca14e4c437d83e6f89bb0d082f378b8bb",
+  "prompts": {},
+  "sessions": {
+    "s_957c54c34b2975": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9433d313-d123-42c3-abb6-25c75ac1f5ea",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
