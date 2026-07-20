@@ -24,7 +24,7 @@ from .cache import NullCache, ResponseCache, cache_key
 from .cases import EvalCase, case_to_dict
 from .grading import grade_case
 from .reporting import write_html_report
-from .usage import Usage, estimate_cost, load_pricing
+from .usage import Usage, estimate_cost, load_pricing, normalize_usage
 
 # Bumped when the shape of summary.json / results.jsonl changes in a way that
 # makes older runs non-comparable. Reproducibility tooling reads this.
@@ -198,11 +198,10 @@ def _execute(
     else:
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             pending: dict[Future[tuple[int, int, dict[str, Any]]], tuple[int, int]] = {}
-            task_iter = iter(tasks)
             while True:
-                while len(pending) < concurrency and not (cancelled and cancelled.is_set()):
+                while len(pending) < concurrency and not (cancelled is not None and cancelled.is_set()):
                     try:
-                        task = next(task_iter)
+                        task = next(tasks)
                     except StopIteration:
                         break
                     pending[pool.submit(run_task, task)] = task
@@ -251,6 +250,27 @@ def _run_attempt(
     pricing: dict[str, dict[str, float]],
 ) -> dict[str, Any]:
     workspace_path = _prepare_workspace(case)
+    try:
+        return _run_attempt_body(
+            case, adapter, options, run_dir, attempt_index, repeat,
+            cache, pricing, workspace_path,
+        )
+    finally:
+        if workspace_path:
+            shutil.rmtree(workspace_path, ignore_errors=True)
+
+
+def _run_attempt_body(
+    case: EvalCase,
+    adapter: ModelAdapter,
+    options: RunOptions,
+    run_dir: Path,
+    attempt_index: int,
+    repeat: int,
+    cache: ResponseCache | NullCache,
+    pricing: dict[str, dict[str, float]],
+    workspace_path: Path | None,
+) -> dict[str, Any]:
     started = time.perf_counter()
     response_text = ""
     raw_response: Any = None
@@ -341,8 +361,6 @@ def _run_attempt(
         saved.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(workspace_path, saved)
         attempt["workspace_saved"] = str(saved)
-    if workspace_path:
-        shutil.rmtree(workspace_path, ignore_errors=True)
     return attempt
 
 
@@ -364,20 +382,7 @@ def _aggregate_case(
     for a in attempts:
         total_usage = total_usage + Usage(**a.get("usage", {}))
     model = rep.get("model")
-    estimated_costs = [a.get("estimated_cost_usd", a.get("cost_usd")) for a in attempts]
-    known_cost_count = sum(cost is not None for cost in estimated_costs)
-    unknown_cost_count = n - known_cost_count
-    estimated_cost = (
-        round(sum(float(cost) for cost in estimated_costs if cost is not None), 6)
-        if unknown_cost_count == 0
-        else None
-    )
-    provider_costs = [a.get("provider_cost_usd") for a in attempts]
-    provider_cost = (
-        round(sum(float(cost) for cost in provider_costs if cost is not None), 6)
-        if all(cost is not None for cost in provider_costs)
-        else None
-    )
+    estimated_cost, provider_cost, known_cost_count, unknown_cost_count = _sum_costs(attempts)
     first_error = next((a["error"] for a in attempts if a.get("error")), None)
 
     result: dict[str, Any] = {
@@ -443,16 +448,56 @@ def _aggregate_case(
     return result
 
 
+def _bucket_stats(
+    results: list[dict[str, Any]], key: str, default: str
+) -> dict[str, dict[str, Any]]:
+    """Group results by ``key`` and compute count/passed/score/CI per bucket."""
+    buckets: dict[str, dict[str, Any]] = {}
+    for result in results:
+        values = result.get(key) or [default]
+        if not isinstance(values, list):
+            values = [values]
+        for value in values:
+            bucket = buckets.setdefault(str(value), {"count": 0, "passed": 0, "scores": []})
+            bucket["count"] += 1
+            bucket["passed"] += int(bool(result["passed"]))
+            bucket["scores"].append(float(result["score"]))
+    for bucket in buckets.values():
+        scores = bucket.pop("scores")
+        bucket["score"] = stats.mean(scores)
+        low, high = stats.wilson_interval(bucket["passed"], bucket["count"])
+        bucket["pass_rate_ci"] = [round(low, 4), round(high, 4)]
+    return buckets
+
+
+def _sum_costs(items: list[dict[str, Any]]) -> tuple[float | None, float | None, int, int]:
+    """Sum estimated and provider costs across items.
+
+    Returns ``(estimated_cost, provider_cost, known_count, unknown_count)``.
+    Estimated cost is ``None`` when any item has unknown pricing so the
+    dashboard can distinguish "free" from "could not price".
+    """
+    estimated_costs = [i.get("estimated_cost_usd", i.get("cost_usd")) for i in items]
+    known = sum(c is not None for c in estimated_costs)
+    unknown = len(items) - known
+    estimated = (
+        round(sum(float(c) for c in estimated_costs if c is not None), 6)
+        if unknown == 0
+        else None
+    )
+    provider_costs = [i.get("provider_cost_usd") for i in items]
+    provider = (
+        round(sum(float(c) for c in provider_costs if c is not None), 6)
+        if all(c is not None for c in provider_costs)
+        else None
+    )
+    return estimated, provider, known, unknown
+
+
 def _usage_from_response(response: Any) -> Usage:
-    meta = getattr(response, "metadata", None) or {}
-    usage_dict = meta.get("usage")
-    if isinstance(usage_dict, dict) and usage_dict:
-        return Usage(
-            input_tokens=int(usage_dict.get("input_tokens", 0)),
-            output_tokens=int(usage_dict.get("output_tokens", 0)),
-            total_tokens=int(usage_dict.get("total_tokens", 0)),
-        )
-    return Usage()
+    """Extract usage from a response via the shared shape-agnostic normalizer."""
+    meta = getattr(response, "metadata", None)
+    return normalize_usage(meta) if isinstance(meta, dict) else Usage()
 
 
 def _attempt_cache_key(adapter: ModelAdapter, case: EvalCase, attempt_index: int) -> str:
@@ -506,50 +551,13 @@ def _summarize(
     score = stats.mean(case_scores) if has_results else None
     pass_rate = round(passed / total, 6) if has_results else None
 
-    by_capability: dict[str, dict[str, Any]] = {}
-    for result in results:
-        caps = result.get("capability") or ["uncategorized"]
-        for cap in caps:
-            bucket = by_capability.setdefault(cap, {"count": 0, "passed": 0, "scores": []})
-            bucket["count"] += 1
-            bucket["passed"] += int(bool(result["passed"]))
-            bucket["scores"].append(float(result["score"]))
-    for bucket in by_capability.values():
-        bucket_scores = bucket.pop("scores")
-        bucket["score"] = stats.mean(bucket_scores)
-        low, high = stats.wilson_interval(bucket["passed"], bucket["count"])
-        bucket["pass_rate_ci"] = [round(low, 4), round(high, 4)]
-
-    by_difficulty: dict[str, dict[str, Any]] = {}
-    for result in results:
-        diff = result.get("difficulty") or "unspecified"
-        bucket = by_difficulty.setdefault(diff, {"count": 0, "passed": 0, "scores": []})
-        bucket["count"] += 1
-        bucket["passed"] += int(bool(result["passed"]))
-        bucket["scores"].append(float(result["score"]))
-    for bucket in by_difficulty.values():
-        bucket_scores = bucket.pop("scores")
-        bucket["score"] = stats.mean(bucket_scores)
-        low, high = stats.wilson_interval(bucket["passed"], bucket["count"])
-        bucket["pass_rate_ci"] = [round(low, 4), round(high, 4)]
+    by_capability = _bucket_stats(results, "capability", "uncategorized")
+    by_difficulty = _bucket_stats(results, "difficulty", "unspecified")
 
     total_usage = Usage()
     for result in results:
         total_usage = total_usage + Usage(**result.get("usage", {}))
-    result_costs = [r.get("estimated_cost_usd", r.get("cost_usd")) for r in results]
-    known_cost_count = sum(cost is not None for cost in result_costs)
-    unknown_cost_count = total - known_cost_count
-    total_cost = (
-        round(sum(float(cost) for cost in result_costs if cost is not None), 6)
-        if unknown_cost_count == 0
-        else None
-    )
-    provider_costs = [r.get("provider_cost_usd") for r in results]
-    provider_cost = (
-        round(sum(float(cost) for cost in provider_costs if cost is not None), 6)
-        if all(cost is not None for cost in provider_costs)
-        else None
-    )
+    total_cost, provider_cost, known_cost_count, unknown_cost_count = _sum_costs(results)
 
     if has_results:
         pass_low, pass_high = stats.wilson_interval(passed, total)
