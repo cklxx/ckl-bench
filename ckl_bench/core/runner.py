@@ -375,13 +375,15 @@ def _aggregate_case(
     repeat: int,
 ) -> dict[str, Any]:
     rep = attempts[0]  # representative attempt for drill-down evidence
-    scores = [float(a["score"]) for a in attempts]
+    # Exclude errored attempts from the score: a 0.0 from a timeout is not a
+    # model score, it's an infrastructure failure.
+    scores = [float(a["score"]) for a in attempts if a.get("status") != "error"]
     passes = [bool(a["passed"]) for a in attempts]
     n = len(attempts)
     c = sum(passes)
     error_count = sum(1 for a in attempts if a.get("status") == "error" or a.get("error"))
     completed_count = n - error_count
-    agg_score = stats.mean(scores)
+    agg_score = stats.mean(scores) if scores else 0.0
 
     total_usage = Usage()
     for a in attempts:
@@ -456,21 +458,33 @@ def _aggregate_case(
 def _bucket_stats(
     results: list[dict[str, Any]], key: str, default: str
 ) -> dict[str, dict[str, Any]]:
-    """Group results by ``key`` and compute count/passed/score/CI per bucket."""
+    """Group results by ``key`` and compute count/passed/score/CI per bucket.
+
+    Errored results (infrastructure failures) are counted separately so they
+    don't drag down the pass rate / score of the model's actual attempts.
+    """
     buckets: dict[str, dict[str, Any]] = {}
     for result in results:
         values = result.get(key) or [default]
         if not isinstance(values, list):
             values = [values]
+        is_error = result.get("status") == "error"
         for value in values:
-            bucket = buckets.setdefault(str(value), {"count": 0, "passed": 0, "scores": []})
+            bucket = buckets.setdefault(
+                str(value),
+                {"count": 0, "passed": 0, "errored": 0, "scores": []},
+            )
             bucket["count"] += 1
-            bucket["passed"] += int(bool(result["passed"]))
-            bucket["scores"].append(float(result["score"]))
+            if is_error:
+                bucket["errored"] += 1
+            else:
+                bucket["passed"] += int(bool(result["passed"]))
+                bucket["scores"].append(float(result["score"]))
     for bucket in buckets.values():
         scores = bucket.pop("scores")
-        bucket["score"] = stats.mean(scores)
-        low, high = stats.wilson_interval(bucket["passed"], bucket["count"])
+        bucket["score"] = stats.mean(scores) if scores else None
+        denom = bucket["count"] - bucket["errored"]
+        low, high = stats.wilson_interval(bucket["passed"], denom) if denom > 0 else (0.0, 0.0)
         bucket["pass_rate_ci"] = [round(low, 4), round(high, 4)]
     return buckets
 
@@ -547,8 +561,13 @@ def _summarize(
     repeat: int,
 ) -> dict[str, Any]:
     total = len(results)
-    passed = sum(1 for result in results if result["passed"])
-    case_scores = [float(result["score"]) for result in results]
+    # Separate infrastructure errors (timeouts, API failures) from model
+    # failures so the dashboard can show "3 passed / 1 failed / 1 errored"
+    # instead of burying errors in the failed count.
+    errored = sum(1 for r in results if r.get("status") == "error")
+    passed = sum(1 for r in results if r["passed"])
+    failed = total - passed - errored
+    case_scores = [float(r["score"]) for r in results if r.get("status") != "error"]
 
     # When no cases were evaluated, score/pass_rate are null (not 0.0) so the
     # dashboard can distinguish "not run" from "scored 0".
@@ -583,7 +602,8 @@ def _summarize(
         "verifier": options.verifier_name,
         "total": total,
         "passed": passed,
-        "failed": total - passed,
+        "failed": failed,
+        "errored": errored,
         "score": score,
         "pass_rate": pass_rate,
         "pass_rate_ci": pass_rate_ci,

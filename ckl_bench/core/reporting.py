@@ -49,10 +49,13 @@ def _load_web_template() -> str:
 
 def render_terminal_report(summary: dict[str, Any], results: list[dict[str, Any]], run_dir: str) -> str:
     score = float(summary.get("score", 0.0))
+    errored = summary.get("errored")
     lines = [
         "",
         f"Score  {_bar(score, 28)}  {score * 100:5.1f}%{_ci_suffix(summary.get('score_ci'))}",
-        f"Cases  {summary['passed']}/{summary['total']} passed  |  failed {summary['failed']}  |  run {run_dir}",
+        f"Cases  {summary['passed']}/{summary['total']} passed  |  failed {summary['failed']}"
+        f"{f'  |  errored {errored}' if errored else ''}"
+        f"  |  run {run_dir}",
     ]
     repeat = int(summary.get("repeat", 1) or 1)
     if repeat > 1:

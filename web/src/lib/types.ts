@@ -4,6 +4,7 @@ export interface CapabilityBucket {
   score: number;
   passed: number;
   count: number;
+  errored?: number;
   pass_rate_ci?: [number, number];
 }
 
@@ -49,6 +50,7 @@ export interface RunSummary {
   total: number;
   passed: number;
   failed: number;
+  errored?: number;
   score: number;
   pass_rate: number;
   pass_rate_ci?: [number, number];

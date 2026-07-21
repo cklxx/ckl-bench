@@ -121,7 +121,8 @@ class RunnerFeatureTests(unittest.TestCase):
                 RunOptions(out_dir=Path(tmp), run_name="mixed", repeat=3),
             )
         result = res["results"][0]
-        self.assertAlmostEqual(result["score"], 2 / 3)
+        # Score averages only completed attempts (error = infra failure, not 0.0)
+        self.assertAlmostEqual(result["score"], 1.0)
         self.assertFalse(result["passed"])
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["attempt_count"], 3)

@@ -80,6 +80,11 @@ export function RunDetail({ runId, onClose }: RunDetailProps) {
                   </div>
                   <div className="text-xl font-semibold font-variant-numeric">
                     {summary.passed}/{summary.total}
+                    {summary.errored ? (
+                      <span className="ml-1 text-xs font-normal text-amber-600">
+                        +{summary.errored} err
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <div className="rounded-lg bg-muted/60 px-4 py-3">

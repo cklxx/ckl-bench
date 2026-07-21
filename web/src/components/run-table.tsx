@@ -60,6 +60,9 @@ export function RunTable({ runs, onSelectRun }: RunTableProps) {
               {formatPercent(r.pass_rate)}
               <div className="text-[10px] text-muted-foreground">
                 {formatNumber(r.passed)}/{formatNumber(r.total)}
+                {r.errored ? (
+                  <span className="text-amber-600"> +{r.errored}e</span>
+                ) : null}
               </div>
             </TableCell>
             {hasCost && (
