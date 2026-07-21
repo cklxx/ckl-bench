@@ -375,15 +375,16 @@ def _aggregate_case(
     repeat: int,
 ) -> dict[str, Any]:
     rep = attempts[0]  # representative attempt for drill-down evidence
-    # Exclude errored attempts from the score: a 0.0 from a timeout is not a
-    # model score, it's an infrastructure failure.
-    scores = [float(a["score"]) for a in attempts if a.get("status") != "error"]
-    passes = [bool(a["passed"]) for a in attempts]
+    # Exclude errored attempts from score and pass metrics: a 0.0 from a
+    # timeout is an infrastructure failure, not a model score.
+    completed = [a for a in attempts if not _is_error(a)]
+    scores = [float(a["score"]) for a in completed]
+    passes = [bool(a["passed"]) for a in completed]
     n = len(attempts)
     c = sum(passes)
-    error_count = sum(1 for a in attempts if a.get("status") == "error" or a.get("error"))
-    completed_count = n - error_count
-    agg_score = stats.mean(scores) if scores else 0.0
+    error_count = n - len(completed)
+    completed_count = len(completed)
+    agg_score = stats.mean(scores)
 
     total_usage = Usage()
     for a in attempts:
@@ -432,9 +433,9 @@ def _aggregate_case(
         result["repeat"] = n
         result["passes"] = c
         result["score_values"] = scores
-        result["pass_at_1"] = round(c / n, 6)
-        result["pass_at_k"] = round(stats.pass_at_k(n, c, n), 6)
-        result["pass_pow_k"] = round(stats.pass_pow_k(n, c, n), 6)
+        result["pass_at_1"] = round(c / completed_count, 6) if completed_count else 0.0
+        result["pass_at_k"] = round(stats.pass_at_k(completed_count, c, completed_count), 6)
+        result["pass_pow_k"] = round(stats.pass_pow_k(completed_count, c, completed_count), 6)
         result["attempts"] = [
             {
                 "attempt": a["attempt"],
@@ -468,7 +469,7 @@ def _bucket_stats(
         values = result.get(key) or [default]
         if not isinstance(values, list):
             values = [values]
-        is_error = result.get("status") == "error"
+        is_error = _is_error(result)
         for value in values:
             bucket = buckets.setdefault(
                 str(value),
@@ -484,9 +485,19 @@ def _bucket_stats(
         scores = bucket.pop("scores")
         bucket["score"] = stats.mean(scores) if scores else None
         denom = bucket["count"] - bucket["errored"]
-        low, high = stats.wilson_interval(bucket["passed"], denom) if denom > 0 else (0.0, 0.0)
+        low, high = stats.wilson_interval(bucket["passed"], denom)
         bucket["pass_rate_ci"] = [round(low, 4), round(high, 4)]
     return buckets
+
+
+def _is_error(item: dict[str, Any]) -> bool:
+    """True when an attempt/result is an infrastructure failure, not a model score.
+
+    A single predicate so the error policy (which fields count) lives in one
+    place instead of being re-decided in _aggregate_case, _bucket_stats, and
+    _summarize.
+    """
+    return item.get("status") == "error" or bool(item.get("error"))
 
 
 def _sum_costs(items: list[dict[str, Any]]) -> tuple[float | None, float | None, int, int]:
@@ -564,16 +575,16 @@ def _summarize(
     # Separate infrastructure errors (timeouts, API failures) from model
     # failures so the dashboard can show "3 passed / 1 failed / 1 errored"
     # instead of burying errors in the failed count.
-    errored = sum(1 for r in results if r.get("status") == "error")
+    errored = sum(1 for r in results if _is_error(r))
     passed = sum(1 for r in results if r["passed"])
     failed = total - passed - errored
-    case_scores = [float(r["score"]) for r in results if r.get("status") != "error"]
+    case_scores = [float(r["score"]) for r in results if not _is_error(r)]
+    completed = total - errored
 
     # When no cases were evaluated, score/pass_rate are null (not 0.0) so the
     # dashboard can distinguish "not run" from "scored 0".
-    has_results = total > 0
-    score = stats.mean(case_scores) if has_results else None
-    pass_rate = round(passed / total, 6) if has_results else None
+    score = stats.mean(case_scores) if case_scores else None
+    pass_rate = round(passed / completed, 6) if completed else None
 
     by_capability = _bucket_stats(results, "capability", "uncategorized")
     by_difficulty = _bucket_stats(results, "difficulty", "unspecified")
@@ -583,8 +594,8 @@ def _summarize(
         total_usage = total_usage + Usage(**result.get("usage", {}))
     total_cost, provider_cost, known_cost_count, unknown_cost_count = _sum_costs(results)
 
-    if has_results:
-        pass_low, pass_high = stats.wilson_interval(passed, total)
+    if completed:
+        pass_low, pass_high = stats.wilson_interval(passed, completed)
         score_low, score_high = stats.bootstrap_mean_ci(case_scores, seed=options.seed)
         pass_rate_ci: list[float] | None = [round(pass_low, 4), round(pass_high, 4)]
         score_ci: list[float] | None = [round(score_low, 4), round(score_high, 4)]
@@ -622,9 +633,9 @@ def _summarize(
     }
     if repeat > 1:
         summary["repeat"] = repeat
-        summary["pass_at_1"] = round(stats.mean([float(r.get("pass_at_1", 0.0)) for r in results]), 6) if has_results else None
-        summary["pass_at_k"] = round(stats.mean([float(r.get("pass_at_k", 0.0)) for r in results]), 6) if has_results else None
-        summary["pass_pow_k"] = round(stats.mean([float(r.get("pass_pow_k", 0.0)) for r in results]), 6) if has_results else None
+        summary["pass_at_1"] = round(stats.mean([float(r.get("pass_at_1", 0.0)) for r in results]), 6) if completed else None
+        summary["pass_at_k"] = round(stats.mean([float(r.get("pass_at_k", 0.0)) for r in results]), 6) if completed else None
+        summary["pass_pow_k"] = round(stats.mean([float(r.get("pass_pow_k", 0.0)) for r in results]), 6) if completed else None
     return summary
 
 

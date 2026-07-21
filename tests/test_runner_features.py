@@ -130,7 +130,8 @@ class RunnerFeatureTests(unittest.TestCase):
         self.assertEqual(result["passed_count"], 2)
         self.assertEqual(result["error_count"], 1)
         self.assertEqual([a["status"] for a in result["attempts"]], ["completed", "error", "completed"])
-        self.assertEqual(result["pass_at_1"], round(2 / 3, 6))
+        # pass@k uses completed_count (errors are infra failures, not model failures)
+        self.assertEqual(result["pass_at_1"], round(2 / 2, 6))
 
     def test_concurrency_matches_sequential(self) -> None:
         cases = [chat_case(f"c.{i}.v1") for i in range(6)]
