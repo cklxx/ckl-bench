@@ -1,0 +1,25 @@
+ckl_bench/core/reporting.py
+  s_957c54c34b2975::t_85ffa2ac19e005 52-53,58
+ckl_bench/core/runner.py
+  s_957c54c34b2975::t_33c61cb28f5a2f 378-382,385-387,436-438,472,488,493-502,578,581-582,586-587,597-598,636-638
+tests/test_runner_features.py
+  s_957c54c34b2975::t_1fe127ab9d8ce1 133-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ca2a5e2db981109e623575861e2a42cd72267775",
+  "prompts": {},
+  "sessions": {
+    "s_957c54c34b2975": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9433d313-d123-42c3-abb6-25c75ac1f5ea",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
