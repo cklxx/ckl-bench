@@ -1,0 +1,25 @@
+scripts/claude_code_wrapper.py
+  s_06fe26bf2ebd0f::t_39b7f5d0d427aa 4-9
+scripts/codex_wrapper.py
+  s_06fe26bf2ebd0f::t_d5c4ec81d0cb14 3-9
+scripts/dsx_wrapper.py
+  s_06fe26bf2ebd0f::t_568619156e0c04 3-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "87d777d6b58102e8d5465361461091684faeb647",
+  "prompts": {},
+  "sessions": {
+    "s_06fe26bf2ebd0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48fb3816-35f1-46c1-895c-72aff6d468ec",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
