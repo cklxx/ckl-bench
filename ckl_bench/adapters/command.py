@@ -138,3 +138,5 @@ class CommandAdapter:
                 file=sys.stderr,
             )
             return GenerateResponse(text=stdout, raw=parsed, metadata=metadata, workspace_path=workspace_path)
+
+        return GenerateResponse(text=stdout, raw=parsed)

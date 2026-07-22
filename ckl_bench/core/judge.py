@@ -205,7 +205,7 @@ def _try_json_repair(text: str) -> Any | None:
     truncated JSON, single quotes, missing commas) when the user opts in.
     """
     try:
-        import json_repair  # type: ignore[import-not-found]
+        import json_repair
     except ImportError:
         return None
     try:

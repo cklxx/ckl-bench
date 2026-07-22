@@ -21,16 +21,18 @@ class AnthropicAdapter:
             or os.environ.get("ANTHROPIC_BASE_URL")
             or "https://api.anthropic.com"
         ).rstrip("/")
-        self.api_key = (
+        api_key = (
             config.get("api_key")
             or os.environ.get(config.get("api_key_env", ""))
             or os.environ.get("ANTHROPIC_API_KEY")
         )
-        if not self.api_key:
+        if not api_key:
             raise ValueError("anthropic adapter requires ANTHROPIC_API_KEY or config key 'api_key'")
-        self.model = config.get("model") or os.environ.get("ANTHROPIC_MODEL")
-        if not self.model:
+        self.api_key = str(api_key)
+        model = str(config.get("model") or "") or os.environ.get("ANTHROPIC_MODEL")
+        if not model:
             raise ValueError("anthropic adapter requires --model or ANTHROPIC_MODEL")
+        self.model = model
         self.temperature = float(config.get("temperature", 0))
         self.max_tokens = int(config.get("max_tokens", 512))
         self.version = config.get("anthropic_version", "2023-06-01")

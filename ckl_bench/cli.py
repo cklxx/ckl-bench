@@ -33,7 +33,7 @@ from ckl_bench.core.reporting import (
     write_diff_html_report,
     write_probe_html_report,
 )
-from ckl_bench.core.run_manager import RunManager, collect_runs
+from ckl_bench.core.run_manager import collect_runs
 from ckl_bench.core.runner import RunOptions, filter_cases, run_cases
 from ckl_bench.resources import resource_path
 
@@ -440,7 +440,7 @@ def _cmd_list(args: argparse.Namespace) -> int:
     ]
     widths = [max(len(str(row[i])) for row in rows + [("id", "type", "capability", "title")]) for i in range(4)]
     print(_format_row(("id", "type", "capability", "title"), widths))
-    print(_format_row(tuple("-" * width for width in widths), widths))
+    print(_format_row(tuple("-" * width for width in widths), widths))  # type: ignore[arg-type]
     for row in rows:
         print(_format_row(row, widths))
     return 0
@@ -479,7 +479,7 @@ def _cmd_namespaces(args: argparse.Namespace) -> int:
         for index in range(5)
     ]
     print(_format_row5(("namespace", "aliases", "target", "model", "base_url"), widths))
-    print(_format_row5(tuple("-" * width for width in widths), widths))
+    print(_format_row5(tuple("-" * width for width in widths), widths))  # type: ignore[arg-type]
     for row in rows:
         print(_format_row5(row, widths))
     return 0
@@ -664,7 +664,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
-def _serve_daemon(server: "BenchServer", args: argparse.Namespace) -> None:
+def _serve_daemon(server: Any, args: argparse.Namespace) -> None:
     """Fork and run the server in the background."""
     import subprocess
 

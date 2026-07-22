@@ -86,7 +86,8 @@ class AggregatingHandler(logging.Handler):
             # count.  ``args`` is cleared so ``getMessage`` returns the
             # rewritten ``msg`` verbatim.
             attrs = self._last_record.__dict__.copy()
-            attrs["msg"] = f"{self._last_key[2]} ... (repeated {self._repeat_count}x)"
+            message = self._last_key[2] if self._last_key is not None else record.getMessage()
+            attrs["msg"] = f"{message} ... (repeated {self._repeat_count}x)"
             attrs["args"] = None
             record = logging.makeLogRecord(attrs)
         self._handler.emit(record)

@@ -22,17 +22,19 @@ class GeminiAdapter:
             or os.environ.get("GEMINI_BASE_URL")
             or "https://generativelanguage.googleapis.com/v1beta"
         ).rstrip("/")
-        self.api_key = (
+        api_key = (
             config.get("api_key")
             or os.environ.get(config.get("api_key_env", ""))
             or os.environ.get("GEMINI_API_KEY")
             or os.environ.get("GOOGLE_API_KEY")
         )
-        if not self.api_key:
+        if not api_key:
             raise ValueError("gemini adapter requires GEMINI_API_KEY, GOOGLE_API_KEY, or config key 'api_key'")
-        self.model = config.get("model") or os.environ.get("GEMINI_MODEL")
-        if not self.model:
+        self.api_key = str(api_key)
+        model = str(config.get("model") or "") or os.environ.get("GEMINI_MODEL")
+        if not model:
             raise ValueError("gemini adapter requires --model or GEMINI_MODEL")
+        self.model = model
         self.temperature = float(config.get("temperature", 0))
         self.max_tokens = config.get("max_tokens")
         self.trusted_local = bool(config.get("trusted_local", False))

@@ -218,22 +218,22 @@ def _evaluate(
         )
     if kind in {"numeric", "close"}:
         text = _target_text(expectation, response_text, workspace_path)
-        expected = float(expectation["value"])
+        expected_number = float(expectation["value"])
         abs_tol = float(expectation.get("abs_tol", expectation.get("tol", 1e-6)))
         rel_tol = float(expectation.get("rel_tol", 0.0))
-        actual = _extract_number(text, expectation)
-        if actual is None:
+        actual_number = _extract_number(text, expectation)
+        if actual_number is None:
             return _EvalOutcome(False, 0.0, f"no number found in target for numeric check (got {text[:60]!r})")
-        ok = math.isclose(actual, expected, rel_tol=rel_tol, abs_tol=abs_tol)
-        return _bool_outcome(ok, f"expected ~{expected} (abs_tol={abs_tol}, rel_tol={rel_tol}), got {actual}")
+        ok = math.isclose(actual_number, expected_number, rel_tol=rel_tol, abs_tol=abs_tol)
+        return _bool_outcome(ok, f"expected ~{expected_number} (abs_tol={abs_tol}, rel_tol={rel_tol}), got {actual_number}")
     if kind in {"set_equals", "set_equal"}:
         text = _target_text(expectation, response_text, workspace_path)
         data = json.loads(text)
         if "path" in expectation:
             data = _extract_path(data, str(expectation["path"]))
-        expected = expectation.get("values", expectation.get("value"))
+        expected_values = expectation.get("values", expectation.get("value"))
         actual_set = _as_frozenset(data)
-        expected_set = _as_frozenset(expected)
+        expected_set = _as_frozenset(expected_values)
         return _bool_outcome(
             actual_set == expected_set,
             f"expected set of {len(expected_set)} items, got {len(actual_set)} "

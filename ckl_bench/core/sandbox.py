@@ -181,12 +181,11 @@ def run_python_script(
         except subprocess.TimeoutExpired as exc:
             timed_out = True
             returncode = -1
-            stdout = exc.stdout or ""
-            stderr = (exc.stderr or "") + f"\n[timed out after {timeout_s}s]"
-            if isinstance(stdout, bytes):
-                stdout = stdout.decode("utf-8", "replace")
-            if isinstance(stderr, bytes):
-                stderr = stderr.decode("utf-8", "replace")
+            stdout_raw = exc.stdout or ""
+            stderr_raw = exc.stderr or ""
+            stdout = stdout_raw.decode("utf-8", "replace") if isinstance(stdout_raw, bytes) else stdout_raw
+            stderr = stderr_raw.decode("utf-8", "replace") if isinstance(stderr_raw, bytes) else stderr_raw
+            stderr += f"\n[timed out after {timeout_s}s]"
         duration_ms = round((time.perf_counter() - started) * 1000, 2)
         return ExecResult(
             returncode=returncode,
