@@ -46,8 +46,20 @@ export function CaseTable({ results }: CaseTableProps) {
               )}
             </TableCell>
             <TableCell>
-              <Badge variant={r.passed ? "success" : "destructive"}>
-                {r.passed ? t("caseTable.pass") : t("caseTable.fail")}
+              <Badge
+                variant={
+                  r.status === "error" ? "warning" :
+                  r.status === "cancelled" || r.status === "incomplete" ? "outline" :
+                  r.passed ? "success" : "destructive"
+                }
+              >
+                {r.status === "error"
+                  ? "Error"
+                  : r.status === "cancelled"
+                    ? "Cancelled"
+                    : r.status === "incomplete"
+                      ? "Incomplete"
+                      : r.passed ? t("caseTable.pass") : t("caseTable.fail")}
               </Badge>
             </TableCell>
             <TableCell className="text-right font-variant-numeric">

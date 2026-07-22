@@ -25,9 +25,9 @@ function analyze(
   // Strongest capability
   const caps = latest.by_capability;
   if (caps) {
-    const sorted = Object.entries(caps).sort(
-      (a, b) => b[1].score - a[1].score
-    );
+    const sorted = Object.entries(caps)
+      .filter((entry): entry is [string, typeof entry[1] & { score: number }] => entry[1].score != null)
+      .sort((a, b) => b[1].score - a[1].score);
     if (sorted.length > 0) {
       const [name, bucket] = sorted[0];
       items.push({

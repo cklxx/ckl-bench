@@ -1,7 +1,8 @@
 import type { RunSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-function heatColor(score: number): string {
+function heatColor(score: number | null): string {
+  if (score == null) return "bg-muted text-muted-foreground";
   if (score >= 0.9) return "bg-success";
   if (score >= 0.75) return "bg-success/70";
   if (score >= 0.6) return "bg-warning/80";
@@ -48,7 +49,7 @@ export function Heatmap({ runs }: HeatmapProps) {
             </div>
             {runs.map((r) => {
               const bucket = r.by_capability?.[cap];
-              const score = bucket?.score ?? 0;
+              const score = bucket?.score ?? null;
               return (
                 <div
                   key={r.run_id}
@@ -56,9 +57,9 @@ export function Heatmap({ runs }: HeatmapProps) {
                     "w-16 shrink-0 h-7 rounded-sm flex items-center justify-center text-[10px] font-semibold text-white",
                     heatColor(score)
                   )}
-                  title={`${cap}: ${(score * 100).toFixed(1)}%`}
+                  title={score == null ? `${cap}: —` : `${cap}: ${(score * 100).toFixed(1)}%`}
                 >
-                  {bucket ? `${(score * 100).toFixed(0)}` : "—"}
+                  {score == null ? "—" : `${(score * 100).toFixed(0)}`}
                 </div>
               );
             })}

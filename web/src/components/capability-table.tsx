@@ -16,7 +16,7 @@ export function CapabilityTable({ summary }: { summary: RunSummary }) {
   const caps = summary.by_capability;
   if (!caps) return null;
 
-  const entries = Object.entries(caps).sort((a, b) => b[1].score - a[1].score);
+  const entries = Object.entries(caps).sort((a, b) => (b[1].score ?? -1) - (a[1].score ?? -1));
 
   return (
     <Table>
@@ -45,7 +45,7 @@ export function CapabilityTable({ summary }: { summary: RunSummary }) {
               {formatNumber(bucket.count)}
             </TableCell>
             <TableCell className="text-right font-variant-numeric">
-              {formatPercent(bucket.passed / bucket.count)}
+              {formatPercent(bucket.count > 0 ? bucket.passed / bucket.count : null)}
             </TableCell>
           </TableRow>
         ))}

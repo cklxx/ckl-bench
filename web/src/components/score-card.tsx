@@ -7,7 +7,7 @@ interface ScoreCardProps {
   value: number | null;
   description?: string;
   ci?: [number, number] | null;
-  variant?: "default" | "success" | "destructive" | "warning";
+  variant?: "default" | "success" | "destructive" | "warning" | "outline";
 }
 
 function variantColor(variant: ScoreCardProps["variant"]) {

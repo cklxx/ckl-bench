@@ -10,12 +10,14 @@ import {
   listProviders,
   listRuns,
   ProgressSocket,
+  normalizeRunProgress,
 } from "@/lib/api";
 import { readData } from "@/lib/data";
 import type {
   CaseListItem,
   ConfigInfo,
   ProviderInfo,
+  ProgressEvent,
   Result,
   RunInfo,
   Settings,
@@ -55,6 +57,62 @@ function packFromPaths(paths: string[] | undefined | null): string | null {
   return m ? m[1] : null;
 }
 
+
+export function isActiveRun(status: RunInfo["status"]): boolean {
+  return status === "pending" || status === "running" || status === "cancellation_requested";
+}
+
+export function applyProgressEvent(runs: RunInfo[], event: ProgressEvent): RunInfo[] {
+  if (event.type === "connected") return runs;
+  return runs.map((run) => {
+    if (run.run_id !== event.run_id) return run;
+    const progress = normalizeRunProgress(run.progress ?? {}, run.run_id, run.status);
+    if (event.type === "run_started") {
+      return {
+        ...run,
+        status: run.status === "cancellation_requested" ? run.status : "running",
+        progress: {
+          ...progress,
+          status: run.status === "cancellation_requested" ? run.status : "running",
+          total_cases: event.total_cases,
+          planned_attempts: event.planned_attempts ?? event.total_cases * event.repeat,
+        },
+      };
+    }
+    if (event.type === "attempt_started" || event.type === "attempt_completed") {
+      const attempts = { ...progress.attempts };
+      const caseAttempts = { ...(attempts[event.case_id] ?? {}) };
+      const previous = caseAttempts[String(event.attempt)];
+      caseAttempts[String(event.attempt)] = event.type === "attempt_started"
+        ? {
+            attempt: event.attempt,
+            status: "running",
+            score: previous?.score ?? null,
+            passed: previous?.passed ?? null,
+            error: previous?.error ?? null,
+            error_type: previous?.error_type ?? null,
+          }
+        : {
+            attempt: event.attempt,
+            status: event.status,
+            score: event.score,
+            passed: event.passed,
+            error: event.error,
+            error_type: event.error_type ?? null,
+          };
+      attempts[event.case_id] = caseAttempts;
+      return { ...run, progress: { ...progress, attempts } };
+    }
+    return {
+      ...run,
+      status: event.status,
+      summary: event.summary,
+      error: event.error,
+      progress: { ...progress, status: event.status },
+    };
+  });
+}
+
 // Built-in CLI adapters run through the command wrapper; discovered providers
 // are launched by their registry target instead.
 const BUILTIN_CLI_ADAPTER_KEYS = new Set(["claude-code", "codex", "dsx"]);
@@ -87,74 +145,34 @@ export function BenchPage() {
     refresh();
   }, [refresh]);
 
-  // WebSocket for live progress updates. ws_port comes from the injected
-  // window.__CKL_BENCH_DATA__ (available immediately) or /api/config.
+  // WebSocket for live progress updates. Normalize legacy transport shapes at
+  // the API boundary; state always uses canonical attempt-aware progress.
   const injectedWsPort = readData().ws_port;
   useEffect(() => {
     const wsPort = config?.ws_port ?? injectedWsPort;
     const socket = new ProgressSocket(wsPort);
-    socket.on((event: any) => {
-      if (event.type === "run_started") {
-        setRuns((prev) =>
-          prev.map((r) => {
-            if (r.run_id !== event.run_id) return r;
-            return {
-              ...r,
-              progress: {
-                ...(r.progress || {}),
-                total_cases: event.total_cases || 0,
-                repeat: event.repeat || 1,
-                cases: (r.progress as any)?.cases || {},
-              },
-            };
-          })
-        );
-      } else if (event.type === "case_completed" || event.type === "case_started") {
-        setRuns((prev) =>
-          prev.map((r) => {
-            if (r.run_id !== event.run_id) return r;
-            const progress = { ...(r.progress || {}) };
-            const progCases = { ...(progress.cases || {}) };
-            progCases[event.case_id] = {
-              status:
-                event.type === "case_started"
-                  ? "running"
-                  : event.error
-                    ? "failed"
-                    : "completed",
-              attempt: event.attempt || 0,
-              score: event.score ?? null,
-              passed: event.passed ?? null,
-              error: event.error || null,
-            };
-            return { ...r, progress: { ...progress, cases: progCases } };
-          })
-        );
-      } else if (event.type === "run_finished") {
-        setRuns((prev) =>
-          prev.map((r) =>
-            r.run_id === event.run_id
-              ? { ...r, status: event.status, summary: event.summary }
-              : r
-          )
-        );
-      }
+    socket.on((event: ProgressEvent) => {
+      setRuns((prev) => applyProgressEvent(prev, event));
     });
     socket.connect();
     const poll = setInterval(() => {
       if (!socket.connected) {
         setRuns((current) => {
-          const active = current.filter((run) =>
-            ["pending", "running", "cancellation_requested"].includes(run.status)
-          );
+          const active = current.filter((run) => isActiveRun(run.status));
           void Promise.allSettled(active.map((run) => getRunProgress(run.run_id))).then(
             (outcomes) => {
               const updates = new Map(
                 outcomes
                   .filter((outcome): outcome is PromiseFulfilledResult<RunInfo> => outcome.status === "fulfilled")
-                  .map((outcome) => [outcome.value.run_id, outcome.value])
+                  .map((outcome) => {
+                    const run = outcome.value;
+                    return [run.run_id, {
+                      ...run,
+                      progress: normalizeRunProgress(run.progress ?? {}, run.run_id, run.status),
+                    } satisfies RunInfo] as const;
+                  })
               );
-              setRuns((prev) => prev.map((run) => updates.get(run.run_id) || run));
+              setRuns((previous) => previous.map((run) => updates.get(run.run_id) || run));
             }
           );
           return current;
@@ -169,7 +187,7 @@ export function BenchPage() {
       clearInterval(poll);
       clearInterval(discover);
     };
-  }, [config?.ws_port, injectedWsPort, refresh]);
+  }, [config?.ws_port, injectedWsPort]);
 
   // Group cases into packs.
   const packMap = new Map<string, CaseListItem[]>();
@@ -194,15 +212,10 @@ export function BenchPage() {
     if (!packName) continue;
     const adapter =
       (run.summary as any)?.adapter_display || run.summary?.adapter || "unknown";
-    const progress = run.progress || { total_cases: 0, cases: {} };
-    const progCases = progress.cases || {};
-    const total = progress.total_attempts ?? progress.total_cases ?? Object.keys(progCases).length;
-    const completed = progress.completed_attempts ?? Object.values(progCases).filter(
-      (c: any) => c.status === "completed" || c.status === "failed"
-    ).length;
-    const passed = progress.passed_attempts ?? Object.values(progCases).filter(
-      (c: any) => c.status === "completed" && c.passed === true
-    ).length;
+    const progress = normalizeRunProgress(run.progress ?? {}, run.run_id, run.status);
+    const total = progress.planned_attempts || progress.total_cases;
+    const completed = progress.completed_attempts;
+    const passed = progress.passed_attempts;
     const existing = packRunMap.get(packName) || [];
     existing.push({
       runId: run.run_id,
@@ -244,7 +257,19 @@ export function BenchPage() {
         {
           run_id: result.run_id,
           status: "running",
-          progress: { total_cases: caseCount, cases: {} },
+          progress: {
+            run_id: result.run_id,
+            status: "running",
+            total_cases: caseCount,
+            planned_attempts: caseCount * (settings?.defaults.repeat ?? 1),
+            started_attempts: 0,
+            completed_attempts: 0,
+            passed_attempts: 0,
+            failed_attempts: 0,
+            error_attempts: 0,
+            cancelled_attempts: 0,
+            attempts: {},
+          },
           summary: {
             run_id: result.run_id,
             adapter: isBuiltin ? "command" : adapterKey,
@@ -313,7 +338,7 @@ export function BenchPage() {
   const [runResults, setRunResults] = useState<Record<string, Result[]>>({});
   useEffect(() => {
     const need = runs.filter(
-      (r) => r.status === "completed" && !r.results && !runResults[r.run_id]
+      (r) => ["completed", "failed", "cancelled"].includes(r.status) && !r.results && !runResults[r.run_id]
     );
     if (need.length === 0) return;
     Promise.allSettled(need.map((r) => getRun(r.run_id))).then((outcomes) => {
@@ -520,7 +545,7 @@ function BenchPackCard({
   const t = useT();
   const copyTag = useCopyToast();
   const hasRunning = runStates.some(
-    (r) => r.status === "running" || r.status === "pending"
+    (r) => isActiveRun(r.status)
   );
   const hasCompleted = runStates.some((r) => r.status === "completed");
 

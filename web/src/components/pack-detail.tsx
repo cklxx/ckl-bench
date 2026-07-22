@@ -5,7 +5,7 @@ import { PlayCircle, Box, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 import { useCopyToast } from "@/lib/use-copy-toast";
-import type { CaseListItem } from "@/lib/types";
+import type { CaseListItem, RunStatus } from "@/lib/types";
 
 export interface PackInfo {
   name: string;
@@ -16,7 +16,7 @@ export interface PackInfo {
 export interface PackRunState {
   runId: string;
   adapter: string;
-  status: string;
+  status: RunStatus;
   progress: { total: number; completed: number; passed: number };
   summary?: any;
 }

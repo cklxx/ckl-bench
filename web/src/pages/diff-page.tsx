@@ -33,9 +33,11 @@ function deltaBadge(delta: number | null) {
 export function DiffPage({ diff }: DiffPageProps) {
   const t = useT();
   const d = diff;
-  const scoreDelta = Math.round(d.score_delta * 1000) / 10;
+  const scoreDelta = d.score_delta == null ? null : Math.round(d.score_delta * 1000) / 10;
   const scoreDeltaColor =
-    scoreDelta > 0
+    scoreDelta == null
+      ? "text-muted-foreground"
+      : scoreDelta > 0
       ? "text-success"
       : scoreDelta < 0
         ? "text-destructive"
@@ -122,8 +124,7 @@ export function DiffPage({ diff }: DiffPageProps) {
             <div
               className={`text-3xl font-bold font-variant-numeric ${scoreDeltaColor}`}
             >
-              {scoreDelta > 0 ? "+" : ""}
-              {scoreDelta.toFixed(1)}%
+              {scoreDelta == null ? "—" : `${scoreDelta > 0 ? "+" : ""}${scoreDelta.toFixed(1)}%`}
             </div>
             <p className="text-xs text-muted-foreground">
               {t("diff.summary", {

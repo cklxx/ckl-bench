@@ -51,7 +51,7 @@ export function DifficultyTable({ summary }: { summary: RunSummary }) {
               {formatNumber(bucket.count)}
             </TableCell>
             <TableCell className="text-right font-variant-numeric">
-              {formatPercent(bucket.passed / bucket.count)}
+              {formatPercent(bucket.count > 0 ? bucket.passed / bucket.count : null)}
             </TableCell>
           </TableRow>
         ))}

@@ -6,16 +6,24 @@ declare global {
   }
 }
 
-/** Read the injected data from the Python side. Falls back to a stub in dev. */
+/** Read inert JSON bootstrap data, with legacy window assignment compatibility. */
 export function readData(): BenchData {
-  const data = window.__CKL_BENCH_DATA__;
-  if (data) return data;
-
-  // Dev fallback: no data injected — show an empty report page.
-  if (import.meta.env.DEV) {
-    return { page: "report" };
+  const element = document.getElementById("ckl-bench-data");
+  if (element?.textContent) {
+    try {
+      return JSON.parse(element.textContent) as BenchData;
+    } catch {
+      // Fall through to the legacy carrier during backend migration.
+    }
   }
-  return { page: "report" };
+  return window.__CKL_BENCH_DATA__ ?? { page: "report" };
+}
+
+export function readAppBootstrap(): import("./types").AppBootstrap | null {
+  const data = readData();
+  return data.page === "app" && typeof data.ws_port === "number" && typeof data.api_token === "string"
+    ? { page: "app", ws_port: data.ws_port, api_token: data.api_token }
+    : null;
 }
 
 export function hasData(data: BenchData): boolean {

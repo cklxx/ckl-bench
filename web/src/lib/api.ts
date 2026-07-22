@@ -9,14 +9,31 @@ import type {
   RunInfo,
   Settings,
   AdapterTestResult,
+  ProgressEvent,
+  RunProgress,
+  RunStatus,
+  AttemptProgress,
 } from "./types";
+import { readAppBootstrap } from "./data";
 
 const BASE = ""; // Same-origin; the server serves both the app and the API.
+const BOOTSTRAP = readAppBootstrap();
+const API_TOKEN = BOOTSTRAP?.api_token;
+
+function tokenSubprotocol(token: string): string {
+  const bytes = new TextEncoder().encode(token);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `ckl-bench-token.${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers);
+  headers.set("Content-Type", "application/json");
+  if (API_TOKEN) headers.set("Authorization", `Bearer ${API_TOKEN}`);
   const res = await fetch(BASE + path, {
-    headers: { "Content-Type": "application/json", ...(options?.headers || {}) },
     ...options,
+    headers,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -66,7 +83,7 @@ export function getRunProgress(runId: string): Promise<RunInfo> {
   return request<RunInfo>(`/api/runs/${encodeURIComponent(runId)}/progress`);
 }
 
-export function cancelRun(runId: string): Promise<{ run_id: string; status: string }> {
+export function cancelRun(runId: string): Promise<{ run_id: string; status: RunStatus }> {
   return request(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST", body: "{}" });
 }
 
@@ -121,9 +138,65 @@ export function testAdapter(
   });
 }
 
+export function normalizeRunProgress(
+  value: Partial<RunProgress> & Record<string, any>,
+  runId = value.run_id ?? "",
+  status: RunStatus = value.status ?? "running"
+): RunProgress {
+  const source = value.attempts ?? value.cases ?? {};
+  const attempts: RunProgress["attempts"] = {};
+  for (const [caseId, rawCase] of Object.entries(source)) {
+    const rawAttempts = rawCase && typeof rawCase === "object" && "status" in rawCase
+      ? { [String((rawCase as any).attempt ?? 0)]: rawCase }
+      : rawCase as Record<string, any>;
+    attempts[caseId] = {};
+    for (const [attemptKey, rawAttempt] of Object.entries(rawAttempts ?? {})) {
+      const item = rawAttempt as Partial<AttemptProgress>;
+      const keyNumber = Number(attemptKey);
+      attempts[caseId][attemptKey] = {
+        attempt: item.attempt ?? (Number.isFinite(keyNumber) ? keyNumber : 0),
+        status: item.status === "failed" && item.error ? "error" : item.status ?? "running",
+        score: item.score ?? null,
+        passed: item.passed ?? null,
+        error: item.error ?? null,
+        error_type: item.error_type ?? null,
+      };
+    }
+  }
+  return {
+    run_id: runId,
+    status,
+    total_cases: value.total_cases ?? 0,
+    planned_attempts: value.planned_attempts ?? value.total_attempts ?? value.total ?? 0,
+    started_attempts: value.started_attempts ?? value.started ?? 0,
+    completed_attempts: value.completed_attempts ?? value.completed ?? 0,
+    passed_attempts: value.passed_attempts ?? value.passed ?? 0,
+    failed_attempts: value.failed_attempts ?? value.failed ?? 0,
+    error_attempts: value.error_attempts ?? value.error ?? 0,
+    cancelled_attempts: value.cancelled_attempts ?? value.cancelled ?? 0,
+    attempts,
+  };
+}
+
+export function normalizeProgressEvent(value: any): ProgressEvent | null {
+  if (!value || typeof value !== "object" || typeof value.type !== "string") return null;
+  if (value.type === "case_started") return { ...value, type: "attempt_started" } as ProgressEvent;
+  if (value.type === "case_completed") {
+    return {
+      ...value,
+      type: "attempt_completed",
+      status: value.status ?? (value.error ? "error" : value.passed === false ? "failed" : "completed"),
+      score: value.score ?? null,
+      passed: value.passed ?? null,
+      error: value.error ?? null,
+    } as ProgressEvent;
+  }
+  return value as ProgressEvent;
+}
+
 // --- WebSocket ---
 
-export type ProgressListener = (event: any) => void;
+export type ProgressListener = (event: ProgressEvent) => void;
 
 export class ProgressSocket {
   private ws: WebSocket | null = null;
@@ -133,7 +206,7 @@ export class ProgressSocket {
   private retries = 0;
   private maxRetries = 10;
 
-  constructor(wsPort?: number) {
+  constructor(wsPort = BOOTSTRAP?.ws_port, private token = API_TOKEN) {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const port = wsPort ? `:${wsPort}` : "";
     this.url = `${proto}://${location.hostname}${port}/ws`;
@@ -141,11 +214,16 @@ export class ProgressSocket {
 
   connect() {
     try {
-      this.ws = new WebSocket(this.url);
+      const protocols = this.token
+        ? ["ckl-bench", tokenSubprotocol(this.token)]
+        : ["ckl-bench"];
+      this.ws = new WebSocket(this.url, protocols);
       this.ws.onmessage = (ev) => {
-        let event: any;
+        let event: ProgressEvent;
         try {
-          event = JSON.parse(ev.data);
+          const parsed = normalizeProgressEvent(JSON.parse(ev.data));
+          if (!parsed) return;
+          event = parsed;
         } catch {
           return;
         }

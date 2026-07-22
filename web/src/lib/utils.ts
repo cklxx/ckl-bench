@@ -27,8 +27,9 @@ export function shortId(value: string, len = 16): string {
 }
 
 export function scoreVariant(
-  score: number
-): "success" | "warning" | "destructive" {
+  score: number | null | undefined
+): "success" | "warning" | "destructive" | "outline" {
+  if (score == null) return "outline";
   if (score >= 0.8) return "success";
   if (score >= 0.5) return "warning";
   return "destructive";

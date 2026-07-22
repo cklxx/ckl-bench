@@ -88,11 +88,24 @@ describe("FailureAnalysis", () => {
     expect(screen.getByText("regex")).toBeInTheDocument();
   });
 
+  it("separates model failures, infrastructure errors, and incomplete outcomes", () => {
+    renderFailure([], [
+      makeFailedResult({ case_id: "model", status: "failed", checks: [{ kind: "judge", passed: false }] }),
+      makeFailedResult({ case_id: "infra", status: "error", error: "Connection timeout" }),
+      makeFailedResult({ case_id: "cancel", status: "cancelled", error: "cancelled" }),
+    ]);
+    expect(screen.getByText("Model failures")).toBeInTheDocument();
+    expect(screen.getByText("Infrastructure errors")).toBeInTheDocument();
+    expect(screen.getByText("Cancellation / incomplete")).toBeInTheDocument();
+    expect(screen.getByText("Connection timeout")).toBeInTheDocument();
+    expect(screen.queryByText("cancelled")).not.toBeInTheDocument();
+  });
+
   it("shows error pattern grouping from failed results", () => {
     renderFailure([], [
-      makeFailedResult({ case_id: "c1", error: "Connection timeout" }),
-      makeFailedResult({ case_id: "c2", error: "Connection timeout" }),
-      makeFailedResult({ case_id: "c3", error: "Invalid response" }),
+      makeFailedResult({ case_id: "c1", status: "error", error: "Connection timeout" }),
+      makeFailedResult({ case_id: "c2", status: "error", error: "Connection timeout" }),
+      makeFailedResult({ case_id: "c3", status: "error", error: "Invalid response" }),
     ]);
     expect(screen.getByText("By Error Pattern")).toBeInTheDocument();
     expect(screen.getByText("Connection timeout")).toBeInTheDocument();

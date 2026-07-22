@@ -39,8 +39,8 @@ export function ComparisonTable({ runs }: ComparisonTableProps) {
   for (const cap of caps) {
     let best = -1;
     for (const r of runs) {
-      const s = r.by_capability?.[cap]?.score ?? -1;
-      if (s > best) best = s;
+      const s = r.by_capability?.[cap]?.score;
+      if (s != null && s > best) best = s;
     }
     bestByCap.set(cap, best);
   }
@@ -76,8 +76,8 @@ export function ComparisonTable({ runs }: ComparisonTableProps) {
                   </TableCell>
                   {runs.map((r) => {
                     const bucket = r.by_capability?.[cap];
-                    const score = bucket?.score ?? 0;
-                    const isBest = bucket != null && score === best && best >= 0;
+                    const score = bucket?.score ?? null;
+                    const isBest = score != null && score === best && best >= 0;
                     const ci = bucket?.pass_rate_ci;
                     const detail = bucket
                       ? `${formatNumber(bucket.passed)}/${formatNumber(bucket.count)}${ci ? ` [${formatPercent(ci[0], 0)}, ${formatPercent(ci[1], 0)}]` : ""}`

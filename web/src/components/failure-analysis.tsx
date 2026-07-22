@@ -29,7 +29,7 @@ export function FailureAnalysis({ runs, results }: FailureAnalysisProps) {
     if (!r.by_capability) continue;
     for (const [cap, bucket] of Object.entries(r.by_capability)) {
       const existing = capFailures.get(cap);
-      const failed = bucket.count - bucket.passed;
+      const failed = Math.max(0, bucket.count - bucket.passed - (bucket.errored ?? 0));
       if (existing) {
         existing.failed += failed;
         existing.total += bucket.count;
@@ -49,7 +49,16 @@ export function FailureAnalysis({ runs, results }: FailureAnalysisProps) {
     .sort((a, b) => b.rate - a.rate || b.failed - a.failed);
 
   // --- Results-based analysis ---
-  const failedResults = (results ?? []).filter((r) => !r.passed);
+  const allResults = results ?? [];
+  const infrastructureErrors = allResults.filter(
+    (r) => r.status === "error" || (!!r.error && r.status !== "cancelled" && r.status !== "incomplete")
+  );
+  const incompleteResults = allResults.filter(
+    (r) => r.status === "cancelled" || r.status === "incomplete"
+  );
+  const failedResults = allResults.filter(
+    (r) => r.passed === false && !infrastructureErrors.includes(r) && !incompleteResults.includes(r)
+  );
 
   // By check type: count failed checks by kind.
   const checkTypeCounts = new Map<string, number>();
@@ -67,7 +76,7 @@ export function FailureAnalysis({ runs, results }: FailureAnalysisProps) {
 
   // By error pattern: group error strings.
   const errorCounts = new Map<string, number>();
-  for (const r of failedResults) {
+  for (const r of infrastructureErrors) {
     if (!r.error) continue;
     // Normalize: trim and collapse whitespace.
     const normalized = r.error.trim().replace(/\s+/g, " ");
@@ -78,8 +87,10 @@ export function FailureAnalysis({ runs, results }: FailureAnalysisProps) {
     .sort((a, b) => b.count - a.count);
 
   const hasResults = failedResults.length > 0;
+  const hasInfrastructureErrors = infrastructureErrors.length > 0;
+  const hasIncomplete = incompleteResults.length > 0;
 
-  if (capRows.length === 0 && !hasResults) return null;
+  if (capRows.length === 0 && !hasResults && !hasInfrastructureErrors && !hasIncomplete) return null;
 
   return (
     <div className="space-y-4">
@@ -133,7 +144,25 @@ export function FailureAnalysis({ runs, results }: FailureAnalysisProps) {
         </Card>
       )}
 
-      {hasResults && (
+      {(hasInfrastructureErrors || hasIncomplete) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Outcome Categories</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader><TableRow><TableHead>Category</TableHead><TableHead className="text-right">Count</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {hasInfrastructureErrors && <TableRow><TableCell>Infrastructure errors</TableCell><TableCell className="text-right">{formatNumber(infrastructureErrors.length)}</TableCell></TableRow>}
+                {hasIncomplete && <TableRow><TableCell>Cancellation / incomplete</TableCell><TableCell className="text-right">{formatNumber(incompleteResults.length)}</TableCell></TableRow>}
+                {hasResults && <TableRow><TableCell>Model failures</TableCell><TableCell className="text-right">{formatNumber(failedResults.length)}</TableCell></TableRow>}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {(hasResults || errorRows.length > 0) && (
         <>
           {checkTypeRows.length > 0 && (
             <Card>
