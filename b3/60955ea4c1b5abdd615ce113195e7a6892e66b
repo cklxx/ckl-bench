@@ -1,0 +1,57 @@
+ckl_bench/adapters/_http.py
+  s_85fb53495bff91::t_6292ad96b2414a 1,5,9,12,17-18,30-95,105,132,134-137,143,147,151-152,154
+ckl_bench/adapters/anthropic.py
+  s_85fb53495bff91::t_e25cf24a88ab43 37,73
+ckl_bench/adapters/command.py
+  s_63f824aeeee2f8::t_33cac62d1eeeed 34-40,45-54
+ckl_bench/adapters/gemini.py
+  s_85fb53495bff91::t_b698d0e88aee9d 38,75
+ckl_bench/adapters/http_json.py
+  s_85fb53495bff91::t_719d7b1791b7d3 39,66
+ckl_bench/adapters/openai_compatible.py
+  s_85fb53495bff91::t_38f822af0e8eb7 46,67
+ckl_bench/cli.py
+  s_85fb53495bff91::t_860e504797fd40 503,966,989,1058,1071,1092
+ckl_bench/core/grading.py
+  s_85fb53495bff91::t_46499527151832 16,367,494,541
+ckl_bench/core/paths.py
+  s_85fb53495bff91::t_832216af6ba405 1-81
+ckl_bench/core/runner.py
+  s_85fb53495bff91::t_1adccb1a2efb3f 26,44-45,255,259,262-263,276,318-324,375,377,565-573
+ckl_bench/core/sandbox.py
+  s_85fb53495bff91::t_c364f3e14a0efd 9-12,18,43-69,139-169,171,173,177
+ckl_bench/wrappers/common.py
+  s_85fb53495bff91::t_fe88578e26c96e 134,138
+tests/test_grading.py
+  s_85fb53495bff91::t_d981aa08e26031 3,47-56
+tests/test_sandbox.py
+  s_85fb53495bff91::t_a803022b4433ab 3,7,13-29
+tests/test_security.py
+  s_85fb53495bff91::t_0db6266ad97f43 1-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b360955ea4c1b5abdd615ce113195e7a6892e66b",
+  "prompts": {},
+  "sessions": {
+    "s_63f824aeeee2f8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a8e2e1edf9a1452a1",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    },
+    "s_85fb53495bff91": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa583af46fc5fdd1b",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
