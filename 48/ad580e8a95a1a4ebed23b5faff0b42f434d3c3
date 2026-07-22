@@ -1,0 +1,31 @@
+ckl_bench/adapters/anthropic.py
+  s_a72717f64e3e6d::t_598637bef2b658 36-38,63-64
+tests/test_anthropic.py
+  s_3450c41f991104::t_ffca52806ea40a 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "48ad580e8a95a1a4ebed23b5faff0b42f434d3c3",
+  "prompts": {},
+  "sessions": {
+    "s_3450c41f991104": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad05ace2998bf1061",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    },
+    "s_a72717f64e3e6d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9d580c4f55020bdb",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
