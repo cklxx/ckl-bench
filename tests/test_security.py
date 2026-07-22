@@ -4,7 +4,6 @@ import io
 import os
 import tempfile
 import unittest
-import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -102,20 +101,35 @@ class HTTPPolicyTests(unittest.TestCase):
         self.assertIn("x-test", lowered)
         validate.assert_called_once()
 
-    @mock.patch.dict(os.environ, {"CKL_MAX_RETRIES": "1", "CKL_RETRY_BASE_DELAY": "0"})
-    @mock.patch("ckl_bench.adapters._http.validate_outbound_url")
-    @mock.patch("ckl_bench.adapters._http.urllib.request.build_opener")
-    def test_retryable_http_error_retries(self, build_opener: mock.Mock, validate: mock.Mock) -> None:
-        error = urllib.error.HTTPError(
-            "https://example.com", 503, "unavailable", {}, io.BytesIO(b"retry")
+    @mock.patch("ckl_bench.adapters._http.socket.create_connection")
+    @mock.patch("ckl_bench.adapters._http.socket.getaddrinfo")
+    def test_request_dials_only_validated_address(
+        self, getaddrinfo: mock.Mock, create_connection: mock.Mock
+    ) -> None:
+        getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+        raw = mock.MagicMock()
+        wrapped = mock.MagicMock()
+        wrapped.makefile.return_value = io.BytesIO(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\n{\"ok\": true}"
         )
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = b'{"ok": true}'
-        opener = build_opener.return_value
-        opener.open.side_effect = [error, response]
+        create_connection.return_value = raw
+        with mock.patch("ckl_bench.adapters._http.ssl.SSLContext.wrap_socket", return_value=wrapped):
+            result = request_json("https://example.com/api", data=b"{}", headers={})
+        self.assertEqual(result, {"ok": True})
+        create_connection.assert_called_once()
+        self.assertEqual(create_connection.call_args.args[0], ("93.184.216.34", 443))
+        getaddrinfo.assert_called_once()
+
+    @mock.patch.dict(os.environ, {"CKL_MAX_RETRIES": "1", "CKL_RETRY_BASE_DELAY": "0"})
+    @mock.patch("ckl_bench.adapters._http._request_once")
+    def test_retryable_http_error_retries(self, request_once: mock.Mock) -> None:
+        request_once.side_effect = [
+            (503, {"Retry-After": "0"}, b"retry"),
+            (200, {}, b'{"ok": true}'),
+        ]
         result = request_json("https://example.com", data=b"{}", headers={})
         self.assertEqual(result, {"ok": True})
-        self.assertEqual(opener.open.call_count, 2)
+        self.assertEqual(request_once.call_count, 2)
 
 
 if __name__ == "__main__":

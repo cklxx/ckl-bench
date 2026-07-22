@@ -135,13 +135,20 @@ def run_python_script(
             handle.write(script)
         started = time.perf_counter()
         timed_out = False
+        backend: str | None = None
+        cid_path: Path | None = None
         try:
             backend = _container_backend()
             if backend:
+                cid_fd, cid_name = tempfile.mkstemp(prefix="_ckl_bench_cid_", dir=str(work))
+                os.close(cid_fd)
+                cid_path = Path(cid_name)
+                cid_path.unlink()
                 command = [
                     backend,
                     "run",
                     "--rm",
+                    "--cidfile", str(cid_path),
                     "--network=none",
                     "--read-only",
                     "--cap-drop=ALL",
@@ -179,6 +186,19 @@ def run_python_script(
             returncode = completed.returncode
             stdout, stderr = completed.stdout, completed.stderr
         except subprocess.TimeoutExpired as exc:
+            if backend and cid_path and cid_path.exists():
+                try:
+                    container_id = cid_path.read_text(encoding="utf-8").strip()
+                    if container_id:
+                        subprocess.run(
+                            [backend, "rm", "-f", container_id],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            timeout=5,
+                            check=False,
+                        )
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
             timed_out = True
             returncode = -1
             stdout_raw = exc.stdout or ""
@@ -199,5 +219,10 @@ def run_python_script(
             script_path.unlink()
         except OSError:
             pass
+        if cid_path is not None:
+            try:
+                cid_path.unlink()
+            except OSError:
+                pass
         if cleanup_dir is not None:
             cleanup_dir.cleanup()

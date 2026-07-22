@@ -27,6 +27,26 @@ class SandboxTests(unittest.TestCase):
                 run_python_script("print('blocked')")
         os.environ["CKL_ALLOW_UNSAFE_LOCAL_EXECUTION"] = "1"
 
+    def test_container_timeout_forcibly_removes_container(self) -> None:
+        os.environ.pop("CKL_ALLOW_UNSAFE_LOCAL_EXECUTION", None)
+        calls: list[list[str]] = []
+
+        def fake_run(command, **kwargs):
+            calls.append(command)
+            if command[1] == "run":
+                cid_path = Path(command[command.index("--cidfile") + 1])
+                cid_path.write_text("container-123\n", encoding="utf-8")
+                raise __import__("subprocess").TimeoutExpired(command, 0.1)
+            return mock.Mock(returncode=0)
+
+        with mock.patch("ckl_bench.core.sandbox._container_backend", return_value="docker"), mock.patch(
+            "ckl_bench.core.sandbox.subprocess.run", side_effect=fake_run
+        ):
+            result = run_python_script("while True: pass", timeout_s=0.1)
+        self.assertTrue(result.timed_out)
+        self.assertEqual(calls[1], ["docker", "rm", "-f", "container-123"])
+        os.environ["CKL_ALLOW_UNSAFE_LOCAL_EXECUTION"] = "1"
+
     def test_runs_and_captures_stdout(self) -> None:
         result = run_python_script("print('hello')")
         self.assertTrue(result.ok)
