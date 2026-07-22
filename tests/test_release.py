@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -28,6 +29,20 @@ class ReleaseContractTests(unittest.TestCase):
         self.assertIn("from ckl_bench.wrappers.claude_code import main", wrapper)
         self.assertNotIn("subprocess", wrapper)
         self.assertFalse((ROOT / "scripts" / "_common.py").exists())
+
+    def test_checkout_wrappers_import_without_installation(self) -> None:
+        env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", "")}
+        for name in ("claude_code_wrapper.py", "codex_wrapper.py", "dsx_wrapper.py"):
+            completed = subprocess.run(
+                [sys.executable, "-c", f"import runpy; runpy.run_path({str(ROOT / 'scripts' / name)!r}, run_name='wrapper_import')"],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertNotIn("ModuleNotFoundError", completed.stderr, name)
 
     def test_packaged_resources_and_frontend_are_available(self) -> None:
         self.assertTrue((resource_path("cases/chat") / "hard_programming.jsonl").is_file())
