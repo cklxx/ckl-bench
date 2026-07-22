@@ -23,6 +23,7 @@ from . import stats
 from .cache import NullCache, ResponseCache, cache_key
 from .cases import EvalCase, case_to_dict
 from .grading import grade_case
+from .paths import UnsafePathError, copy_tree_safely, safe_join, validate_owned_path
 from .reporting import write_html_report
 from .usage import Usage, estimate_cost, load_pricing, normalize_usage
 
@@ -40,7 +41,8 @@ _SECRET_ARG_RE = re.compile(
 )
 _ADAPTER_BEHAVIOR_FIELDS = (
     "model", "temperature", "max_tokens", "extra_body", "base_url", "endpoint",
-    "timeout_s", "text_path", "command", "shell", "cwd", "version", "headers", "extra_env",
+    "timeout_s", "text_path", "command", "shell", "trusted_shell", "cwd", "version",
+    "headers", "extra_env", "trusted_local",
 )
 
 _log = logging.getLogger(__name__)
@@ -250,14 +252,15 @@ def _run_attempt(
     pricing: dict[str, dict[str, float]],
 ) -> dict[str, Any]:
     workspace_path = _prepare_workspace(case)
+    owned_workspace = workspace_path
     try:
         return _run_attempt_body(
             case, adapter, options, run_dir, attempt_index, repeat,
-            cache, pricing, workspace_path,
+            cache, pricing, workspace_path, owned_workspace,
         )
     finally:
-        if workspace_path:
-            shutil.rmtree(workspace_path, ignore_errors=True)
+        if owned_workspace:
+            shutil.rmtree(owned_workspace, ignore_errors=True)
 
 
 def _run_attempt_body(
@@ -270,6 +273,7 @@ def _run_attempt_body(
     cache: ResponseCache | NullCache,
     pricing: dict[str, dict[str, float]],
     workspace_path: Path | None,
+    owned_workspace: Path | None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     response_text = ""
@@ -311,7 +315,13 @@ def _run_attempt_body(
             # there; use it for grading so code_test can read agent artifacts
             # instead of trying to extract code from the response text.
             if response.workspace_path is not None:
-                workspace_path = response.workspace_path
+                if owned_workspace is None:
+                    raise UnsafePathError("adapter returned a workspace for a non-workspace case")
+                workspace_path = validate_owned_path(
+                    owned_workspace,
+                    response.workspace_path,
+                    label="adapter workspace",
+                )
         except Exception as exc:  # noqa: BLE001 - one bad attempt should produce evidence.
             error = f"{type(exc).__name__}: {exc}"
         if key is not None and error is None:
@@ -362,9 +372,9 @@ def _run_attempt_body(
         attempt["raw_response"] = raw_response
     if workspace_path and options.keep_workspaces and attempt_index == 0:
         suffix = case.id if repeat == 1 else f"{case.id}/attempt-{attempt_index}"
-        saved = run_dir / "workspaces" / suffix
+        saved = safe_join(run_dir, Path("workspaces") / suffix, label="retained workspace")
         saved.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(workspace_path, saved)
+        copy_tree_safely(workspace_path, saved)
         attempt["workspace_saved"] = str(saved)
     return attempt
 
@@ -552,14 +562,15 @@ def _prepare_workspace(case: EvalCase) -> Path | None:
     files = workspace.get("files", {})
     if not isinstance(files, dict):
         raise ValueError(f"{case.id}: input.workspace.files must be an object")
-    root = Path(tempfile.mkdtemp(prefix=f"ckl-bench-{case.id}-"))
-    for relative_name, content in files.items():
-        relative = Path(str(relative_name))
-        if relative.is_absolute() or ".." in relative.parts:
-            raise ValueError(f"{case.id}: unsafe workspace path {relative}")
-        target = root / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(str(content), encoding="utf-8")
+    root = Path(tempfile.mkdtemp(prefix="ckl-bench-workspace-"))
+    try:
+        for relative_name, content in files.items():
+            target = safe_join(root, str(relative_name), label=f"{case.id} workspace path")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(str(content), encoding="utf-8")
+    except Exception:
+        shutil.rmtree(root, ignore_errors=True)
+        raise
     return root
 
 

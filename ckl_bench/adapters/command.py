@@ -31,15 +31,27 @@ class CommandAdapter:
             raise ValueError("command adapter requires config key 'command' or --command")
         # Auto-wrap known CLIs: if the command is a raw CLI name, route through
         # the matching wrapper script so the user only sees the CLI name.
-        first_token = shlex.split(command)[0] if isinstance(command, str) else command[0]
-        cli_name = Path(first_token).name
+        try:
+            argv = shlex.split(command) if isinstance(command, str) else [str(part) for part in command]
+        except ValueError as exc:
+            raise ValueError(f"invalid command: {exc}") from exc
+        if not argv:
+            raise ValueError("command adapter requires a non-empty command")
+        cli_name = Path(argv[0]).name
         # Display name is the raw CLI the user configured (e.g. "dsx"), so the
         # dashboard shows the real agent name instead of "command".
         self.display_name = cli_name
         if cli_name in _KNOWN_CLIS:
-            command = f"{shlex.quote(sys.executable)} -m {_KNOWN_CLIS[cli_name]}"
-        self.command = command
-        self.shell = bool(config.get("shell", isinstance(command, str)))
+            argv = [sys.executable, "-m", _KNOWN_CLIS[cli_name]]
+        requested_shell = bool(config.get("shell", False))
+        trusted_shell = bool(config.get("trusted_shell", False))
+        if requested_shell and not trusted_shell:
+            raise ValueError(
+                "shell execution is disabled; use an argv command or set "
+                "trusted_shell=true only for trusted compatibility commands"
+            )
+        self.shell = requested_shell and trusted_shell
+        self.command = command if self.shell else argv
         self.cwd = config.get("cwd")
         self.extra_env = config.get("env", {})
 
@@ -53,8 +65,6 @@ class CommandAdapter:
             "timeout_s": request.timeout_s,
         }
         command = self.command
-        if isinstance(command, str) and not self.shell:
-            command = shlex.split(command)
 
         env = None
         if self.extra_env:

@@ -43,6 +43,7 @@ class OpenAICompatibleAdapter:
         self.temperature = float(config.get("temperature", 0))
         self.max_tokens = config.get("max_tokens")
         self.extra_body = dict(config.get("extra_body", {}))
+        self.trusted_local = bool(config.get("trusted_local", False))
 
     def generate(self, request: GenerateRequest) -> GenerateResponse:
         payload: dict[str, Any] = {
@@ -63,6 +64,7 @@ class OpenAICompatibleAdapter:
             },
             timeout=request.timeout_s or 120,
             api_label="OpenAI-compatible API",
+            trusted_local=self.trusted_local,
         )
         text = data["choices"][0]["message"].get("content") or ""
         return GenerateResponse(

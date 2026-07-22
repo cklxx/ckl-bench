@@ -131,10 +131,11 @@ def run_exec_wrapper(prefix: str, default_command: str, model_flag: str, default
     )
     if source_workspace:
         sync_workspace(workspace, source_workspace)
+    result_workspace = source_workspace or workspace
     print(json.dumps({
         "text": extract_text(completed.stdout),
         "returncode": completed.returncode,
-        "workspace": str(workspace),
+        "workspace": str(result_workspace),
         "usage": parse_usage_stderr(completed.stderr),
         "stderr_tail": diagnose_stderr(completed.stderr.strip()[-2000:]),
     }, ensure_ascii=True))

@@ -34,6 +34,7 @@ class AnthropicAdapter:
         self.temperature = float(config.get("temperature", 0))
         self.max_tokens = int(config.get("max_tokens", 512))
         self.version = config.get("anthropic_version", "2023-06-01")
+        self.trusted_local = bool(config.get("trusted_local", False))
 
     def generate(self, request: GenerateRequest) -> GenerateResponse:
         system_parts: list[str] = []
@@ -69,6 +70,7 @@ class AnthropicAdapter:
             },
             timeout=request.timeout_s or 120,
             api_label="Anthropic API",
+            trusted_local=self.trusted_local,
         )
         text = "".join(
             part.get("text", "")

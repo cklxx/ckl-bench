@@ -1,29 +1,21 @@
-"""Shared HTTP helper: stdlib urllib POST with retry, backoff, and jitter.
-
-Every API adapter routes through ``request_json`` so transient failures
-(429 rate limits, 5xx, connection resets, timeouts) survive a long live run
-instead of zeroing a case. Retryable vs fatal is distinguished by status code,
-``Retry-After`` is honored, and attempt counts are surfaced for evidence.
-
-Tuning via environment (all optional):
-- ``CKL_MAX_RETRIES``       default 3 (so up to 4 attempts)
-- ``CKL_RETRY_BASE_DELAY``  default 0.5 (seconds, doubled each attempt)
-- ``CKL_RETRY_MAX_DELAY``   default 20.0 (seconds, per-attempt cap)
-"""
+"""Shared JSON HTTP client with retries and strict outbound URL policy."""
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import random
+import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any
 
-# Status codes worth retrying: request timeout, conflict, rate limit, and the
-# transient 5xx family. Everything else (400/401/403/404/422) is fatal.
 RETRYABLE_STATUS = frozenset({408, 409, 429, 500, 502, 503, 504})
+_REDIRECT_STATUS = frozenset({301, 302, 303, 307, 308})
+_SENSITIVE_HEADERS = frozenset({"authorization", "proxy-authorization", "cookie", "x-api-key"})
 
 
 class HTTPRequestError(RuntimeError):
@@ -35,6 +27,72 @@ class HTTPRequestError(RuntimeError):
         self.attempts = attempts
 
 
+def safe_url_label(url: str) -> str:
+    """Return a log-safe URL without credentials, query parameters, or fragments."""
+    parsed = urllib.parse.urlsplit(url)
+    host = parsed.hostname or "invalid-host"
+    if ":" in host:
+        host = f"[{host}]"
+    port = f":{parsed.port}" if parsed.port else ""
+    return urllib.parse.urlunsplit((parsed.scheme, f"{host}{port}", parsed.path or "/", "", ""))
+
+
+def _is_public_address(address: str) -> bool:
+    ip = ipaddress.ip_address(address.split("%", 1)[0])
+    return ip.is_global
+
+
+def validate_outbound_url(url: str, *, trusted_local: bool = False) -> str:
+    """Validate URL syntax, scheme, credentials, and all resolved IP addresses."""
+    parsed = urllib.parse.urlsplit(url)
+    allowed_schemes = {"https"} | ({"http"} if trusted_local else set())
+    if parsed.scheme.lower() not in allowed_schemes:
+        raise HTTPRequestError("outbound URL must use HTTPS")
+    if not parsed.hostname or parsed.username is not None or parsed.password is not None:
+        raise HTTPRequestError("outbound URL must have a host and no embedded credentials")
+    try:
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+    except ValueError as exc:
+        raise HTTPRequestError("outbound URL has an invalid port") from exc
+    try:
+        addresses = {item[4][0] for item in socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)}
+    except socket.gaierror as exc:
+        raise HTTPRequestError(f"could not resolve outbound host {parsed.hostname!r}") from exc
+    if not addresses:
+        raise HTTPRequestError(f"could not resolve outbound host {parsed.hostname!r}")
+    if not trusted_local and any(not _is_public_address(address) for address in addresses):
+        raise HTTPRequestError(f"outbound host {parsed.hostname!r} resolves to a non-public address")
+    return url
+
+
+def _origin(url: str) -> tuple[str, str, int]:
+    parsed = urllib.parse.urlsplit(url)
+    return parsed.scheme.lower(), parsed.hostname or "", parsed.port or (443 if parsed.scheme == "https" else 80)
+
+
+class _PolicyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def __init__(self, trusted_local: bool):
+        super().__init__()
+        self.trusted_local = trusted_local
+
+    def redirect_request(self, req: urllib.request.Request, fp: Any, code: int, msg: str, headers: Any, newurl: str):
+        if code not in _REDIRECT_STATUS:
+            return None
+        target = urllib.parse.urljoin(req.full_url, newurl)
+        validate_outbound_url(target, trusted_local=self.trusted_local)
+        redirected = super().redirect_request(req, fp, code, msg, headers, target)
+        if redirected is None:
+            return None
+        if _origin(req.full_url) != _origin(target):
+            for key in list(redirected.headers):
+                if key.lower() in _SENSITIVE_HEADERS:
+                    redirected.remove_header(key)
+            for key in list(redirected.unredirected_hdrs):
+                if key.lower() in _SENSITIVE_HEADERS:
+                    redirected.remove_header(key)
+        return redirected
+
+
 def _retry_settings() -> tuple[int, float, float]:
     max_retries = int(os.environ.get("CKL_MAX_RETRIES", "3"))
     base = float(os.environ.get("CKL_RETRY_BASE_DELAY", "0.5"))
@@ -44,10 +102,9 @@ def _retry_settings() -> tuple[int, float, float]:
 
 def _sleep_for(attempt: int, base: float, cap: float, retry_after: float | None) -> None:
     if retry_after is not None:
-        time.sleep(min(retry_after, cap))
+        time.sleep(min(max(0.0, retry_after), cap))
         return
     delay = min(cap, base * (2 ** attempt))
-    # Full jitter avoids synchronized retries across concurrent workers.
     time.sleep(random.uniform(0.0, delay) if delay > 0 else 0.0)
 
 
@@ -72,26 +129,29 @@ def request_json(
     method: str = "POST",
     timeout: float | None = 120.0,
     api_label: str = "API",
+    trusted_local: bool = False,
 ) -> dict[str, Any]:
-    """POST ``data`` to ``url`` and return parsed JSON, retrying transient errors.
-
-    Raises ``HTTPRequestError`` on a fatal status or after exhausting retries.
-    """
+    """Request JSON with retry and SSRF-safe URL/redirect validation."""
+    validate_outbound_url(url, trusted_local=trusted_local)
+    opener = urllib.request.build_opener(_PolicyRedirectHandler(trusted_local))
+    label = api_label if "://" not in api_label else safe_url_label(api_label)
     max_retries, base, cap = _retry_settings()
     attempt = 0
     while True:
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as resp:
+            with opener.open(request, timeout=timeout) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            message = f"HTTP {exc.code} from {api_label}: {detail}"
+            message = f"HTTP {exc.code} from {label}: {detail}"
             if exc.code not in RETRYABLE_STATUS or attempt >= max_retries:
                 raise HTTPRequestError(message, status=exc.code, attempts=attempt + 1) from exc
             _sleep_for(attempt, base, cap, _retry_after_seconds(exc.headers))
+        except HTTPRequestError:
+            raise
         except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
-            message = f"{type(exc).__name__} from {api_label}: {exc}"
+            message = f"{type(exc).__name__} from {label}: {exc}"
             if attempt >= max_retries:
                 raise HTTPRequestError(message, status=None, attempts=attempt + 1) from exc
             _sleep_for(attempt, base, cap, None)

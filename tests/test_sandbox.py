@@ -1,13 +1,32 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from ckl_bench.core.sandbox import run_python_script
 
 
 class SandboxTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._unsafe = os.environ.get("CKL_ALLOW_UNSAFE_LOCAL_EXECUTION")
+        os.environ["CKL_ALLOW_UNSAFE_LOCAL_EXECUTION"] = "1"
+
+    def tearDown(self) -> None:
+        if self._unsafe is None:
+            os.environ.pop("CKL_ALLOW_UNSAFE_LOCAL_EXECUTION", None)
+        else:
+            os.environ["CKL_ALLOW_UNSAFE_LOCAL_EXECUTION"] = self._unsafe
+
+    def test_fails_closed_without_backend_or_opt_in(self) -> None:
+        os.environ.pop("CKL_ALLOW_UNSAFE_LOCAL_EXECUTION", None)
+        with mock.patch("ckl_bench.core.sandbox._container_backend", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "no container backend"):
+                run_python_script("print('blocked')")
+        os.environ["CKL_ALLOW_UNSAFE_LOCAL_EXECUTION"] = "1"
+
     def test_runs_and_captures_stdout(self) -> None:
         result = run_python_script("print('hello')")
         self.assertTrue(result.ok)

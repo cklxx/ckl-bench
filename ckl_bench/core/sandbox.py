@@ -6,15 +6,16 @@ status. This module provides a minimal, stdlib-only way to do that: write a
 script next to the candidate's files and execute it in the workspace with a wall
 clock timeout and best-effort resource limits.
 
-Security note: this executes the case's test code and the candidate's edited
-files. Cases are trusted local content, but agent-produced files are only as
-trustworthy as the agent. For untrusted agents, run the whole evaluation inside
-a container or VM; this module is a guardrail, not a jail.
+Security policy: container execution is used when Docker or Podman is available.
+Without a container backend, execution fails closed unless the operator explicitly
+sets ``CKL_ALLOW_UNSAFE_LOCAL_EXECUTION=1``. Local resource limits are guardrails,
+not a security boundary.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -39,6 +40,33 @@ class ExecResult:
 # Environment variables worth preserving for a Python subprocess. Everything
 # else (API keys, tokens) is dropped so candidate code cannot read credentials.
 _SAFE_ENV_KEYS = ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "SYSTEMROOT")
+_CONTAINER_IMAGE = "python:3.12-slim"
+_UNSAFE_LOCAL_ENV = "CKL_ALLOW_UNSAFE_LOCAL_EXECUTION"
+
+
+def _container_backend() -> str | None:
+    configured = os.environ.get("CKL_CONTAINER_BACKEND")
+    candidates = [configured] if configured else ["docker", "podman"]
+    for candidate in candidates:
+        executable = shutil.which(candidate) if candidate else None
+        if not executable:
+            continue
+        try:
+            probe = subprocess.run(
+                [executable, "info"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if probe.returncode == 0:
+            return executable
+    return None
+
+
+def _unsafe_local_allowed() -> bool:
+    return os.environ.get(_UNSAFE_LOCAL_ENV, "").lower() in {"1", "true", "yes"}
 
 
 def _child_env(extra_env: dict[str, str] | None) -> dict[str, str]:
@@ -108,17 +136,45 @@ def run_python_script(
         started = time.perf_counter()
         timed_out = False
         try:
-            # No -I/-P: the script lives in the workspace, so the workspace is
-            # sys.path[0] and the test can ``import`` the candidate's files.
-            # Credentials are isolated via the scrubbed environment instead.
+            backend = _container_backend()
+            if backend:
+                command = [
+                    backend,
+                    "run",
+                    "--rm",
+                    "--network=none",
+                    "--read-only",
+                    "--cap-drop=ALL",
+                    "--security-opt=no-new-privileges",
+                    f"--memory={memory_mb}m",
+                    f"--cpus=1",
+                    "--pids-limit=64",
+                    "--tmpfs=/tmp:rw,noexec,nosuid,size=64m",
+                    "-e", "PYTHONIOENCODING=utf-8",
+                    "-e", "PYTHONDONTWRITEBYTECODE=1",
+                    "-v", f"{work.resolve()}:/workspace:rw",
+                    "-w", "/workspace",
+                    os.environ.get("CKL_SANDBOX_IMAGE", _CONTAINER_IMAGE),
+                    "python",
+                    script_path.name,
+                ]
+                env = _child_env(None)
+            elif _unsafe_local_allowed():
+                command = [interpreter, str(script_path)]
+                env = _child_env(extra_env)
+            else:
+                raise RuntimeError(
+                    "no container backend available; install Docker/Podman or set "
+                    f"{_UNSAFE_LOCAL_ENV}=1 to explicitly allow unsafe local execution"
+                )
             completed = subprocess.run(
-                [interpreter, str(script_path)],
+                command,
                 cwd=str(work),
-                env=_child_env(extra_env),
+                env=env,
                 capture_output=True,
                 text=True,
                 timeout=timeout_s,
-                preexec_fn=_limit_resources(int(timeout_s) + 1, memory_mb),
+                preexec_fn=None if backend else _limit_resources(int(timeout_s) + 1, memory_mb),
             )
             returncode = completed.returncode
             stdout, stderr = completed.stdout, completed.stderr

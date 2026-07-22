@@ -36,6 +36,7 @@ class HTTPJsonAdapter:
         self.headers = dict(config.get("headers", {}))
         self.timeout_s = float(config.get("timeout_s", 120))
         self.text_path = config.get("text_path")
+        self.trusted_local = bool(config.get("trusted_local", False))
 
         api_key = config.get("api_key")
         if not api_key and config.get("api_key_env"):
@@ -62,6 +63,7 @@ class HTTPJsonAdapter:
             headers=headers,
             timeout=timeout,
             api_label=self.endpoint,
+            trusted_local=self.trusted_local,
         )
         meta = {"usage": normalize_usage(data).as_dict()}
         if self.text_path:

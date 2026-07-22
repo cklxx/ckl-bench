@@ -35,6 +35,7 @@ class GeminiAdapter:
             raise ValueError("gemini adapter requires --model or GEMINI_MODEL")
         self.temperature = float(config.get("temperature", 0))
         self.max_tokens = config.get("max_tokens")
+        self.trusted_local = bool(config.get("trusted_local", False))
 
     def generate(self, request: GenerateRequest) -> GenerateResponse:
         contents: list[dict[str, Any]] = []
@@ -71,6 +72,7 @@ class GeminiAdapter:
             },
             timeout=request.timeout_s or 120,
             api_label="Gemini API",
+            trusted_local=self.trusted_local,
         )
         parts = data["candidates"][0]["content"].get("parts", [])
         text = "".join(part.get("text", "") for part in parts if isinstance(part, dict))

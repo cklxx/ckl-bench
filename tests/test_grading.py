@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,6 +44,16 @@ def make_case(expectations: list[dict], *, metadata: dict | None = None, input_p
 
 
 class GradingTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self._unsafe = os.environ.get("CKL_ALLOW_UNSAFE_LOCAL_EXECUTION")
+        os.environ["CKL_ALLOW_UNSAFE_LOCAL_EXECUTION"] = "1"
+
+    def tearDown(self) -> None:
+        if self._unsafe is None:
+            os.environ.pop("CKL_ALLOW_UNSAFE_LOCAL_EXECUTION", None)
+        else:
+            os.environ["CKL_ALLOW_UNSAFE_LOCAL_EXECUTION"] = self._unsafe
+
     def test_contains_and_not_contains(self) -> None:
         case = make_case([
             {"kind": "contains", "value": "hello"},

@@ -13,6 +13,7 @@ from typing import Any
 from ckl_bench.adapters.base import ModelAdapter
 
 from .cases import EvalCase
+from .paths import safe_join
 from .sandbox import run_python_script
 
 _NUMBER_RE = re.compile(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?")
@@ -363,10 +364,7 @@ def _target_text(expectation: dict[str, Any], response_text: str, workspace_path
 def _workspace_file(workspace_path: Path | None, expectation: dict[str, Any]) -> Path:
     if workspace_path is None:
         raise ValueError("workspace expectation used without workspace")
-    relative = Path(str(expectation["path"]))
-    if relative.is_absolute() or ".." in relative.parts:
-        raise ValueError(f"unsafe workspace path: {relative}")
-    return workspace_path / relative
+    return safe_join(workspace_path, str(expectation["path"]), label="workspace path")
 
 
 def _loads_lenient(text: str) -> Any:
@@ -493,7 +491,7 @@ def _code_test(
                     # of returning it in the text. If the expected file exists,
                     # use it; otherwise search the workspace for a .py file the
                     # agent may have written under a different name.
-                    target = work / str(response_file)
+                    target = safe_join(work, str(response_file), label="code_test response path")
                     if target.exists():
                         payload = None
                     else:
@@ -540,10 +538,7 @@ def _find_agent_file(work: Path, suffix: str) -> Path | None:
 
 
 def _write_safe(root: Path, name: str, content: str) -> None:
-    relative = Path(name)
-    if relative.is_absolute() or ".." in relative.parts:
-        raise ValueError(f"unsafe code_test path: {name}")
-    target = root / relative
+    target = safe_join(root, name, label="code_test path")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
 

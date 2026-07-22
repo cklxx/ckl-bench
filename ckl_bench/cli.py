@@ -500,7 +500,7 @@ def _cmd_smoke(_args: argparse.Namespace) -> int:
             "command agent",
             "agent",
             adapter_name="command",
-            config={"command": COMMAND_AGENT_EXAMPLE, "shell": True},
+            config={"command": COMMAND_AGENT_EXAMPLE},
             out_dir=Path(tmp),
             run_name="agent",
         )
@@ -898,7 +898,6 @@ def _adapter_config(args: argparse.Namespace) -> dict[str, Any]:
         config["headers"] = headers
     if args.adapter == "command" and not config.get("command"):
         config["command"] = COMMAND_AGENT_EXAMPLE
-        config["shell"] = True
     return config
 
 
@@ -964,6 +963,7 @@ def _apply_target_shorthand(args: argparse.Namespace) -> None:
         args.adapter = "openai"
         args.base_url = os.environ.get("CKL_LOCAL_BASE_URL", LOCAL_BASE_URL)
         args.model = os.environ.get("CKL_LOCAL_MODEL", "local-model")
+        args._provider_config = {"trusted_local": True}
         return
     if target.startswith("openai:"):
         args.adapter = "openai"
@@ -986,6 +986,7 @@ def _apply_target_shorthand(args: argparse.Namespace) -> None:
         args.adapter = "openai"
         args.base_url = os.environ.get("CKL_LOCAL_BASE_URL", LOCAL_BASE_URL)
         args.model = target.split(":", 1)[1]
+        args._provider_config = {"trusted_local": True}
         return
     if target.startswith("command:"):
         args.adapter = "command"
@@ -1054,6 +1055,7 @@ def _api_probe_targets() -> list[dict[str, Any]]:
                 "api_key": os.environ.get("CKL_LOCAL_API_KEY", "local"),
                 "model": os.environ.get("CKL_LOCAL_MODEL", "local-model"),
                 "max_tokens": 128,
+                "trusted_local": True,
             },
             "required_env": ["CKL_LOCAL_BASE_URL"],
         },
@@ -1066,7 +1068,7 @@ def _agent_probe_targets(live_agents: bool) -> list[dict[str, Any]]:
             "target": "command-example",
             "kind": "agent",
             "adapter": "command",
-            "config": {"command": COMMAND_AGENT_EXAMPLE, "shell": True},
+            "config": {"command": COMMAND_AGENT_EXAMPLE},
             "case_set": "agent",
             "required_env": [],
         }
@@ -1087,7 +1089,7 @@ def _agent_probe_targets(live_agents: bool) -> list[dict[str, Any]]:
                     "target": target_name,
                     "kind": "agent",
                     "adapter": "command",
-                    "config": {"command": command, "shell": True},
+                    "config": {"command": command},
                     "case_set": "agent",
                     "required_env": required_env,
                     "required_env_any": required_env_any,
