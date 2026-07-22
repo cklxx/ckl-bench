@@ -20,6 +20,7 @@ import type {
   ProgressEvent,
   Result,
   RunInfo,
+  RunProgress,
   Settings,
 } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,26 @@ export function isActiveRun(status: RunInfo["status"]): boolean {
   return status === "pending" || status === "running" || status === "cancellation_requested";
 }
 
+function progressWithAttempts(
+  progress: RunProgress,
+  attempts: RunProgress["attempts"],
+): RunProgress {
+  const values = Object.values(attempts).flatMap((caseAttempts) => Object.values(caseAttempts));
+  const terminal = values.filter((attempt) => attempt.status !== "running");
+  return {
+    ...progress,
+    attempts,
+    started_attempts: values.length,
+    completed_attempts: terminal.length,
+    passed_attempts: terminal.filter((attempt) => attempt.passed === true).length,
+    failed_attempts: terminal.filter(
+      (attempt) => attempt.status !== "error" && attempt.status !== "cancelled" && attempt.passed === false,
+    ).length,
+    error_attempts: terminal.filter((attempt) => attempt.status === "error").length,
+    cancelled_attempts: terminal.filter((attempt) => attempt.status === "cancelled").length,
+  };
+}
+
 export function applyProgressEvent(runs: RunInfo[], event: ProgressEvent): RunInfo[] {
   if (event.type === "connected") return runs;
   return runs.map((run) => {
@@ -101,7 +122,7 @@ export function applyProgressEvent(runs: RunInfo[], event: ProgressEvent): RunIn
             error_type: event.error_type ?? null,
           };
       attempts[event.case_id] = caseAttempts;
-      return { ...run, progress: { ...progress, attempts } };
+      return { ...run, progress: progressWithAttempts(progress, attempts) };
     }
     return {
       ...run,
