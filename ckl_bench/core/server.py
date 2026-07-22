@@ -12,8 +12,11 @@ falls back to polling ``/api/runs/{id}/progress``.
 
 from __future__ import annotations
 
+import base64
+import hmac
 import json
 import logging
+import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -28,9 +31,9 @@ from ckl_bench.core.cases import (
     validate_case_dict,
     write_cases,
 )
-from ckl_bench.core.providers import load_namespaces
-from ckl_bench.core.run_manager import RunManager
+from ckl_bench.core.providers import load_namespaces, load_provider
 from ckl_bench.core.reporting import _render_react_page
+from ckl_bench.core.run_manager import RunManager
 from ckl_bench.core.settings import (
     Settings,
     apply_settings,
@@ -46,6 +49,12 @@ _log = logging.getLogger(__name__)
 #: Default case file for newly created cases.
 DEFAULT_CASE_FILE = "custom.jsonl"
 MAX_BODY_BYTES = 1024 * 1024
+TERMINAL_RUN_STATUSES = {"completed", "failed", "cancelled"}
+BUILTIN_DASHBOARD_ADAPTERS = {"mock"}
+CONFIGURED_ADAPTER_KEYS = {"claude-code", "codex", "dsx"}
+IMMUTABLE_ADAPTER_CONFIG_KEYS = {"command", "endpoint", "base_url", "workspace_dir", "cache_dir"}
+EDITABLE_ADAPTER_CONFIG_KEYS = {"api_key", "model"}
+EDITABLE_DEFAULT_KEYS = {"repeat", "concurrency", "seed", "judge"}
 
 
 class RequestTooLargeError(ValueError):
@@ -61,9 +70,13 @@ class BenchServer:
         port: int = 8765,
         runs_dir: str | Path = "runs",
         cases_dir: str | Path = "cases",
+        token: str | None = None,
+        origin: str | None = None,
     ) -> None:
         self.host = host
         self.port = port
+        self.token = token or secrets.token_urlsafe(32)
+        self.origin = origin or f"http://{host}:{port}"
         self.runs_dir = Path(runs_dir)
         self.cases_dir = Path(cases_dir)
         self.manager = RunManager(
@@ -113,16 +126,38 @@ class BenchServer:
         """Start the WebSocket server in a background thread if available."""
         try:
             import asyncio
+
             import websockets  # type: ignore[import-untyped]
         except ImportError:
             _log.info("websockets not installed; live progress disabled (polling fallback)")
             return
 
         manager = self.manager
+        token = self.token
+        token_protocol = "ckl-bench-token." + base64.urlsafe_b64encode(
+            token.encode("utf-8")
+        ).decode("ascii").rstrip("=")
+        allowed_origin = self.origin
         ws_port = self.port + 1  # WS on next port over to avoid path conflicts
 
         async def ws_handler(websocket):  # type: ignore[no-untyped-def]
-            """Register a RunManager listener that forwards progress events."""
+            """Authenticate and forward progress events to same-origin clients."""
+            request = getattr(websocket, "request", None)
+            path = getattr(request, "path", None) or getattr(websocket, "path", "")
+            headers = getattr(request, "headers", None) or getattr(websocket, "request_headers", {})
+            parsed = urlparse(path)
+            origin = headers.get("Origin") if headers is not None else None
+            protocols = headers.get("Sec-WebSocket-Protocol", "") if headers is not None else ""
+            offered = {item.strip() for item in protocols.split(",") if item.strip()}
+            if (
+                parsed.path != "/ws"
+                or parsed.query
+                or origin != allowed_origin
+                or "ckl-bench" not in offered
+                or not any(hmac.compare_digest(item, token_protocol) for item in offered)
+            ):
+                await websocket.close(code=1008, reason="unauthorized")
+                return
 
             def listener(event: dict[str, Any]) -> None:
                 try:
@@ -151,7 +186,12 @@ class BenchServer:
         async def run_ws() -> None:
             stop_event = asyncio.Event()
             self._ws_stop = stop_event
-            async with websockets.serve(ws_handler, self.host, ws_port):
+            async with websockets.serve(
+                ws_handler,
+                self.host,
+                ws_port,
+                subprotocols=["ckl-bench"],
+            ):
                 _log.info("WebSocket server running at ws://%s:%d", self.host, ws_port)
                 await stop_event.wait()  # run until shutdown sets the event
 
@@ -228,14 +268,41 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
 
     # -- Response helpers ---------------------------------------------------
 
+    def _request_origin_allowed(self) -> bool:
+        origin = self.headers.get("Origin")
+        return origin is None or origin == self.bench_server.origin
+
+    def _authenticated(self) -> bool:
+        authorization = self.headers.get("Authorization", "")
+        scheme, _, supplied = authorization.partition(" ")
+        return scheme.lower() == "bearer" and hmac.compare_digest(
+            supplied,
+            self.bench_server.token,
+        )
+
+    def _authorize_api(self) -> bool:
+        if not self._request_origin_allowed():
+            self._error(403, "forbidden origin")
+            return False
+        if not self._authenticated():
+            self._error(401, "unauthorized")
+            return False
+        return True
+
+    def _cors_headers(self) -> None:
+        origin = self.headers.get("Origin")
+        if origin == self.bench_server.origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+
     def _json(self, data: Any, status: int = 200) -> None:
         body = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Vary", "Origin")
+        self._cors_headers()
         self.end_headers()
         self.wfile.write(body)
 
@@ -266,7 +333,18 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
     # -- CORS preflight -----------------------------------------------------
 
     def do_OPTIONS(self) -> None:  # noqa: N802
-        self._json({})
+        if not self._request_origin_allowed():
+            self._error(403, "forbidden origin")
+            return
+        if not self._authenticated():
+            self._error(401, "unauthorized")
+            return
+        self.send_response(204)
+        self._cors_headers()
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.end_headers()
 
     # -- Routing ------------------------------------------------------------
 
@@ -281,6 +359,8 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
             return
 
         # API routes.
+        if path.startswith("/api/") and not self._authorize_api():
+            return
         try:
             if path == "/api/cases":
                 self._list_cases(query)
@@ -301,12 +381,15 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
                 self._get_settings()
             else:
                 self._error(404, "not found")
-        except Exception as exc:  # noqa: BLE001
-            self._error(500, f"{type(exc).__name__}: {exc}")
+        except Exception:  # noqa: BLE001
+            _log.exception("GET %s failed", path)
+            self._error(500, "internal server error")
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        if path.startswith("/api/") and not self._authorize_api():
+            return
 
         try:
             body = self._read_body()
@@ -314,6 +397,8 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
                 self._create_case(body)
             elif path == "/api/runs":
                 self._launch_run(body)
+            elif path.startswith("/api/runs/") and path.endswith("/cancel"):
+                self._cancel_run(unquote(path.split("/")[3]))
             elif path == "/api/settings/test":
                 self._test_settings_adapter(body)
             else:
@@ -324,12 +409,15 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
             self._error(400, str(exc))
         except ValueError as exc:
             self._error(400, str(exc))
-        except Exception as exc:  # noqa: BLE001
-            self._error(500, f"{type(exc).__name__}: {exc}")
+        except Exception:  # noqa: BLE001
+            _log.exception("POST %s failed", path)
+            self._error(500, "internal server error")
 
     def do_PUT(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        if path.startswith("/api/") and not self._authorize_api():
+            return
 
         try:
             body = self._read_body()
@@ -345,27 +433,37 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
             self._error(400, str(exc))
         except ValueError as exc:
             self._error(400, str(exc))
-        except Exception as exc:  # noqa: BLE001
-            self._error(500, f"{type(exc).__name__}: {exc}")
+        except Exception:  # noqa: BLE001
+            _log.exception("PUT %s failed", path)
+            self._error(500, "internal server error")
 
     def do_DELETE(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        if path.startswith("/api/") and not self._authorize_api():
+            return
 
         try:
             if path.startswith("/api/cases/"):
                 self._delete_case(unquote(path.rsplit("/", 1)[-1]))
             else:
                 self._error(404, "not found")
-        except Exception as exc:  # noqa: BLE001
-            self._error(500, f"{type(exc).__name__}: {exc}")
+        except Exception:  # noqa: BLE001
+            _log.exception("DELETE %s failed", path)
+            self._error(500, "internal server error")
 
     # -- Static serving -----------------------------------------------------
 
     def _serve_app(self) -> None:
         """Serve the React SPA in app mode."""
         try:
-            html = _render_react_page({"page": "app", "ws_port": self.bench_server.port + 1})
+            html = _render_react_page(
+                {
+                    "page": "app",
+                    "ws_port": self.bench_server.port + 1,
+                    "api_token": self.bench_server.token,
+                }
+            )
         except FileNotFoundError:
             self._error(500, "web template not found; build the frontend first")
             return
@@ -373,6 +471,7 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -470,8 +569,7 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
         if run is None:
             self._error(404, f"run not found: {run_id}")
             return
-        # Include results for completed runs.
-        if run.get("status") == "completed":
+        if run.get("status") in TERMINAL_RUN_STATUSES:
             run["results"] = self.bench_server.manager.get_run_results(run_id)
         self._json(run)
 
@@ -482,54 +580,102 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
             return
         self._json({"run_id": run_id, "status": run["status"], "progress": run.get("progress", {})})
 
+    def _trusted_provider(self, target: str) -> dict[str, Any] | None:
+        provider = load_provider(target)
+        if provider is None:
+            return None
+        adapter = provider.get("adapter")
+        if not isinstance(adapter, str) or ":" in adapter:
+            return None
+        from ckl_bench.adapters.registry import BUILT_INS
+
+        return provider if adapter in BUILT_INS else None
+
+    def _configured_adapter(self, key: str) -> tuple[str, dict[str, Any]] | None:
+        if key not in CONFIGURED_ADAPTER_KEYS:
+            return None
+        config = dict(self.bench_server.settings.adapters.get(key, {}))
+        if not config.get("command"):
+            return None
+        return "command", config
+
     def _launch_run(self, body: dict[str, Any]) -> None:
-        adapter_name = body.get("adapter")
-        adapter_target = _optional_str(body, "adapter_target")
-        adapter_config = body.get("adapter_config") or body.get("config") or {}
-        case_paths = body.get("case_paths")
+        requested = body.get("adapter_target") or body.get("adapter")
+        if not isinstance(requested, str) or not requested:
+            raise ValueError("adapter must be a non-empty trusted target")
+        if body.get("adapter_config") or body.get("config"):
+            raise ValueError("adapter_config is not accepted by the dashboard")
+        if any(body.get(name) is not None for name in ("cache_dir", "reviewer", "verifier")):
+            raise ValueError("dashboard run contains unsupported execution options")
+
+        adapter_name: str | None = None
+        adapter_target: str | None = None
+        adapter_config: dict[str, Any] = {}
+        configured = self._configured_adapter(requested)
+        if configured is not None:
+            adapter_name, adapter_config = configured
+        elif requested in BUILTIN_DASHBOARD_ADAPTERS:
+            adapter_name = requested
+        elif self._trusted_provider(requested) is not None:
+            adapter_target = requested
+        else:
+            raise ValueError(f"untrusted dashboard adapter: {requested}")
+
         case_ids = body.get("case_ids")
-        if not adapter_target and (not isinstance(adapter_name, str) or not adapter_name):
-            raise ValueError("adapter or adapter_target must be a non-empty string")
-        if not isinstance(adapter_config, dict):
-            raise ValueError("adapter_config must be an object")
-        for name, value in (("case_paths", case_paths), ("case_ids", case_ids)):
-            if value is not None and (
-                not isinstance(value, list) or not all(isinstance(item, str) for item in value)
-            ):
-                raise ValueError(f"{name} must be a list of strings")
+        case_paths = body.get("case_paths")
+        if case_ids is not None and (
+            not isinstance(case_ids, list) or not all(isinstance(item, str) for item in case_ids)
+        ):
+            raise ValueError("case_ids must be a list of strings")
+        if case_paths is not None:
+            if not isinstance(case_paths, list) or not all(isinstance(item, str) for item in case_paths):
+                raise ValueError("case_paths must be a list of strings")
+            trusted_packs = {
+                str(path.resolve())
+                for path in self.bench_server.cases_dir.iterdir()
+                if path.is_dir()
+            } if self.bench_server.cases_dir.is_dir() else set()
+            resolved_paths = []
+            for raw_path in case_paths:
+                candidate = Path(raw_path)
+                if not candidate.is_absolute():
+                    candidate = self.bench_server.cases_dir.parent / candidate
+                resolved = str(candidate.resolve())
+                if resolved not in trusted_packs:
+                    raise ValueError(f"untrusted case path: {raw_path}")
+                resolved_paths.append(resolved)
+            case_paths = resolved_paths
+
         repeat = _int_field(body, "repeat", 1, minimum=1)
         concurrency = _int_field(body, "concurrency", 1, minimum=1)
         seed = _int_field(body, "seed", 0)
         judge_target = _optional_str(body, "judge")
-        reviewer_target = _optional_str(body, "reviewer")
-        verifier_target = _optional_str(body, "verifier")
-        cache_dir = _optional_str(body, "cache_dir")
+        if judge_target and judge_target not in {"same", "self"} and self._trusted_provider(judge_target) is None:
+            raise ValueError(f"untrusted judge target: {judge_target}")
 
-        try:
-            run_id = self.bench_server.manager.start_run(
-                adapter_name=adapter_name,
-                adapter_config=adapter_config,
-                adapter_target=adapter_target,
-                case_paths=case_paths,
-                case_ids=case_ids,
-                repeat=repeat,
-                concurrency=concurrency,
-                seed=seed,
-                judge_target=judge_target,
-                reviewer_target=reviewer_target,
-                verifier_target=verifier_target,
-                cache_dir=cache_dir,
-            )
-        except RequestTooLargeError as exc:
-            self._error(413, str(exc))
-        except CaseValidationError as exc:
-            self._error(400, str(exc))
-            return
-        except Exception as exc:  # noqa: BLE001
-            self._error(500, f"{type(exc).__name__}: {exc}")
-            return
-
+        run_id = self.bench_server.manager.start_run(
+            adapter_name=adapter_name,
+            adapter_config=adapter_config,
+            adapter_target=adapter_target,
+            case_paths=case_paths,
+            case_ids=case_ids,
+            repeat=repeat,
+            concurrency=concurrency,
+            seed=seed,
+            judge_target=judge_target,
+        )
         self._json({"run_id": run_id, "status": "running"}, status=202)
+
+    def _cancel_run(self, run_id: str) -> None:
+        run = self.bench_server.manager.get_run(run_id)
+        if run is None:
+            self._error(404, f"run not found: {run_id}")
+            return
+        if run.get("status") not in {"pending", "running", "cancellation_requested"}:
+            self._error(409, f"run is already terminal: {run_id}")
+            return
+        self.bench_server.manager.cancel_run(run_id)
+        self._json({"run_id": run_id, "status": "cancellation_requested"}, status=202)
 
     # -- Providers / Config -------------------------------------------------
 
@@ -578,7 +724,31 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
         )
 
     def _update_settings(self, body: dict[str, Any]) -> None:
-        requested = settings_from_dict(body)
+        adapters = body.get("adapters", {})
+        defaults = body.get("defaults", {})
+        active = body.get("active_adapters", self.bench_server.settings.active_adapters)
+        if not isinstance(adapters, dict) or not isinstance(defaults, dict) or not isinstance(active, list):
+            raise ValueError("invalid settings shape")
+        if any(key not in CONFIGURED_ADAPTER_KEYS for key in adapters):
+            raise ValueError("unknown dashboard adapter")
+        if any(key not in EDITABLE_DEFAULT_KEYS for key in defaults):
+            raise ValueError("unsupported default setting")
+        if any(key not in CONFIGURED_ADAPTER_KEYS for key in active):
+            raise ValueError("unknown active adapter")
+        safe_adapters: dict[str, dict[str, Any]] = {}
+        for name, config in adapters.items():
+            if not isinstance(config, dict):
+                raise ValueError("adapter settings must be objects")
+            forbidden = set(config) & IMMUTABLE_ADAPTER_CONFIG_KEYS
+            if forbidden:
+                raise ValueError("dashboard cannot edit executable or endpoint settings")
+            unknown = set(config) - EDITABLE_ADAPTER_CONFIG_KEYS
+            if unknown:
+                raise ValueError("unsupported adapter setting")
+            safe_adapters[name] = dict(config)
+        requested = settings_from_dict(
+            {"adapters": safe_adapters, "defaults": defaults, "active_adapters": active}
+        )
         save_settings(requested, existing=self.bench_server.settings)
         canonical = load_settings()
         apply_settings(canonical)
@@ -593,8 +763,18 @@ class BenchAPIHandler(BaseHTTPRequestHandler):
         )
 
     def _test_settings_adapter(self, body: dict[str, Any]) -> None:
-        adapter_name = body.get("adapter_name", "mock")
-        config = body.get("config", {}) or {}
-        result = test_adapter(adapter_name, config)
+        key = body.get("adapter_name")
+        if not isinstance(key, str) or key not in CONFIGURED_ADAPTER_KEYS:
+            raise ValueError("unknown dashboard adapter")
+        supplied = body.get("config", {}) or {}
+        if not isinstance(supplied, dict):
+            raise ValueError("config must be an object")
+        if set(supplied) & IMMUTABLE_ADAPTER_CONFIG_KEYS:
+            raise ValueError("dashboard cannot test executable or endpoint overrides")
+        if set(supplied) - EDITABLE_ADAPTER_CONFIG_KEYS:
+            raise ValueError("unsupported adapter setting")
+        config = dict(self.bench_server.settings.adapters.get(key, {}))
+        config.update(supplied)
+        result = test_adapter("command", config)
         status = 200 if result["ok"] else 400
         self._json(result, status=status)
