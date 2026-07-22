@@ -407,16 +407,16 @@ class RunManager:
         results_path = self._runs_dir / run_id / "results.jsonl"
         if not results_path.exists():
             return []
-        results: list[dict[str, Any]] = []
+        disk_results: list[dict[str, Any]] = []
         with results_path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
                 if line:
                     try:
-                        results.append(json.loads(line))
+                        disk_results.append(json.loads(line))
                     except json.JSONDecodeError:
                         pass
-        return _normalize_results(results)
+        return _normalize_results(disk_results)
 
     def cancel_run(self, run_id: str) -> bool:
         """Signal a running run to stop. Returns True if the run was active."""

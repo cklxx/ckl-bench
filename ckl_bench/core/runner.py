@@ -49,7 +49,7 @@ _ADAPTER_BEHAVIOR_FIELDS = (
 _log = logging.getLogger(__name__)
 
 
-def _emit_progress(options: "RunOptions", event: dict[str, Any]) -> None:
+def _emit_progress(options: RunOptions, event: dict[str, Any]) -> None:
     """Best-effort progress emission; never breaks the run."""
     cb = options.on_progress
     if cb is None:

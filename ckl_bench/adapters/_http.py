@@ -55,7 +55,7 @@ def validate_outbound_url(url: str, *, trusted_local: bool = False) -> str:
     except ValueError as exc:
         raise HTTPRequestError("outbound URL has an invalid port") from exc
     try:
-        addresses = {item[4][0] for item in socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)}
+        addresses = {str(item[4][0]) for item in socket.getaddrinfo(parsed.hostname, port, type=socket.SOCK_STREAM)}
     except socket.gaierror as exc:
         raise HTTPRequestError(f"could not resolve outbound host {parsed.hostname!r}") from exc
     if not addresses:

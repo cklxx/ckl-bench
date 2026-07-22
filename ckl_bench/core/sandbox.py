@@ -147,7 +147,7 @@ def run_python_script(
                     "--cap-drop=ALL",
                     "--security-opt=no-new-privileges",
                     f"--memory={memory_mb}m",
-                    f"--cpus=1",
+                    "--cpus=1",
                     "--pids-limit=64",
                     "--tmpfs=/tmp:rw,noexec,nosuid,size=64m",
                     "-e", "PYTHONIOENCODING=utf-8",

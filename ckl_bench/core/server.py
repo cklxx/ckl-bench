@@ -16,11 +16,12 @@ import base64
 import hmac
 import json
 import logging
+import os
 import secrets
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import parse_qs, unquote, urlparse
 
 from ckl_bench.core.cases import (
@@ -75,8 +76,8 @@ class BenchServer:
     ) -> None:
         self.host = host
         self.port = port
-        self.token = token or secrets.token_urlsafe(32)
-        self.origin = origin or f"http://{host}:{port}"
+        self.token = token or os.environ.get("CKL_DASHBOARD_TOKEN") or secrets.token_urlsafe(32)
+        self.origin = origin or os.environ.get("CKL_DASHBOARD_ORIGIN") or f"http://{host}:{port}"
         self.runs_dir = Path(runs_dir)
         self.cases_dir = Path(cases_dir)
         self.manager = RunManager(
@@ -127,7 +128,7 @@ class BenchServer:
         try:
             import asyncio
 
-            import websockets  # type: ignore[import-untyped]
+            import websockets
         except ImportError:
             _log.info("websockets not installed; live progress disabled (polling fallback)")
             return
@@ -140,7 +141,7 @@ class BenchServer:
         allowed_origin = self.origin
         ws_port = self.port + 1  # WS on next port over to avoid path conflicts
 
-        async def ws_handler(websocket):  # type: ignore[no-untyped-def]
+        async def ws_handler(websocket):
             """Authenticate and forward progress events to same-origin clients."""
             request = getattr(websocket, "request", None)
             path = getattr(request, "path", None) or getattr(websocket, "path", "")
@@ -190,7 +191,7 @@ class BenchServer:
                 ws_handler,
                 self.host,
                 ws_port,
-                subprotocols=["ckl-bench"],
+                subprotocols=[cast(Any, "ckl-bench")],
             ):
                 _log.info("WebSocket server running at ws://%s:%d", self.host, ws_port)
                 await stop_event.wait()  # run until shutdown sets the event

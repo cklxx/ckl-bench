@@ -141,17 +141,19 @@ def compare_runs(
     score_a = _number(summary_a.get("score"))
     score_b = _number(summary_b.get("score"))
     aggregate_verdict = None
-    comparable = comparability_status == "compatible" and score_a is not None and score_b is not None
-    if comparable:
+    if score_a is not None and score_b is not None and comparability_status == "compatible":
         delta = score_b - score_a
+        score_delta = delta
         aggregate_verdict = (
             "improved" if delta > SCORE_EPSILON
             else "regressed" if delta < -SCORE_EPSILON
             else "unchanged"
         )
-    elif comparability_status == "compatible":
-        comparability_status = "indeterminate"
-        comparability_warning = "one or both runs are incomplete or unscored"
+    else:
+        score_delta = None
+        if comparability_status == "compatible":
+            comparability_status = "indeterminate"
+            comparability_warning = "one or both runs are incomplete or unscored"
 
     return {
         "run_a": summary_a.get("run_id", "A"),
@@ -160,7 +162,7 @@ def compare_runs(
         "adapter_b": summary_b.get("adapter"),
         "score_a": score_a,
         "score_b": score_b,
-        "score_delta": (score_b - score_a) if comparable else None,
+        "score_delta": score_delta,
         "aggregate_verdict": aggregate_verdict,
         "comparability": {
             "status": comparability_status,

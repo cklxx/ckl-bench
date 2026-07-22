@@ -374,6 +374,10 @@ Full forms:
     serve_parser.add_argument("--port", type=int, default=8765, help="Bind port (default: 8765)")
     serve_parser.add_argument("--runs", default="runs", help="Runs directory (default: runs)")
     serve_parser.add_argument("--cases", default="cases", help="Cases directory (default: cases)")
+    serve_parser.add_argument(
+        "--origin",
+        help="Exact browser Origin allowed by the HTTP and WebSocket servers",
+    )
     serve_parser.add_argument("--open", action="store_true", dest="open_browser", help="Open browser after start")
     serve_parser.add_argument("--daemon", action="store_true", help="Run in background")
     serve_parser.set_defaults(func=_cmd_serve)
@@ -648,6 +652,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         port=args.port,
         runs_dir=args.runs,
         cases_dir=args.cases,
+        origin=args.origin,
     )
 
     if args.daemon:
@@ -675,6 +680,8 @@ def _serve_daemon(server: Any, args: argparse.Namespace) -> None:
         "--host", args.host, "--port", str(args.port),
         "--runs", args.runs, "--cases", args.cases,
     ]
+    if args.origin:
+        cmd.extend(["--origin", args.origin])
     if args.open_browser:
         cmd.append("--open")
     with open(log_file, "a") as log:

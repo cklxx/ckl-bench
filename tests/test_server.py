@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
@@ -166,6 +167,21 @@ class ServerSecurityTests(unittest.TestCase):
         self.assertEqual(status, 500)
         self.assertEqual(json.loads(raw), {"error": "internal server error"})
         self.assertNotIn(b"secret", raw)
+
+    def test_environment_can_set_private_token_and_proxy_origin(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "CKL_DASHBOARD_TOKEN": "automation-token",
+                "CKL_DASHBOARD_ORIGIN": "https://bench.example",
+            },
+        ), patch("ckl_bench.core.server.RunManager"), patch(
+            "ckl_bench.core.server.load_settings",
+            return_value=settings_from_dict({}),
+        ):
+            server = BenchServer(runs_dir=self.server.runs_dir, cases_dir=self.server.cases_dir)
+        self.assertEqual(server.token, "automation-token")
+        self.assertEqual(server.origin, "https://bench.example")
 
     def test_bootstrap_is_not_cached(self) -> None:
         with patch(
