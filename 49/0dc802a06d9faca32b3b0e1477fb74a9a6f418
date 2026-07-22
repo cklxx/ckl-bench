@@ -1,0 +1,23 @@
+ckl_bench/core/server.py
+  s_8f849c70152628::t_2cf33319a1eb3e 15-16,19,34,36,52-57,73-74,78-79,129,136-140,144-160,189-194,271-297,303-305,336-347,362-363,384-386,391-392,400-401,412-414,419-420,436-438,443-444,451-453,460-466,474,572,583-601,603-623,625-648,653-667,669-672,674-675,677-678,727-751,766-778
+tests/test_server.py
+  s_8f849c70152628::t_72eecda336c0e3 1-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "490dc802a06d9faca32b3b0e1477fb74a9a6f418",
+  "prompts": {},
+  "sessions": {
+    "s_8f849c70152628": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3ae738316d713e77",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
