@@ -1,0 +1,21 @@
+ckl_bench/web/index.html
+  s_06fe26bf2ebd0f::t_13dd5a7b8accbc 24,32,48,50-51,55-56,61,71,76,81,126,143,151,154-156,160-163,165-168,170,178,188-191,193-194,205-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "538e62e1caea6ab97b67560980810229435d99d1",
+  "prompts": {},
+  "sessions": {
+    "s_06fe26bf2ebd0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48fb3816-35f1-46c1-895c-72aff6d468ec",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
