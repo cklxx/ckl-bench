@@ -1,0 +1,21 @@
+web/src/pages/bench-page.tsx
+  s_06fe26bf2ebd0f::t_ff7a72aa415d4b 252-254,281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d947b7490332632d5d9ceb1e8cac4e7189d09fdc",
+  "prompts": {},
+  "sessions": {
+    "s_06fe26bf2ebd0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48fb3816-35f1-46c1-895c-72aff6d468ec",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
