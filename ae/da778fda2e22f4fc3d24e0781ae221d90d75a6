@@ -1,0 +1,51 @@
+web/src/components/analysis-cards.tsx
+  s_af66166d0b9313::t_1265b317d12c65 28-30
+web/src/components/capability-table.tsx
+  s_af66166d0b9313::t_c0a46bb8469d34 19,48
+web/src/components/case-table.tsx
+  s_af66166d0b9313::t_6d80075d2e0c17 49-62
+web/src/components/comparison-table.tsx
+  s_af66166d0b9313::t_73800b2e11ab5e 42-43,79-80
+web/src/components/difficulty-table.tsx
+  s_af66166d0b9313::t_458e5de38cf238 54
+web/src/components/heatmap.tsx
+  s_af66166d0b9313::t_fbeae954dd1292 4-5,52,60,62
+web/src/components/pack-detail.tsx
+  s_af66166d0b9313::t_164232a2bac368 8,19
+web/src/components/score-card.tsx
+  s_af66166d0b9313::t_5fe44250db4ba2 10
+web/src/lib/data.ts
+  s_af66166d0b9313::t_ce1af5f92d7229 9,11-17,19-26
+web/src/lib/types.ts
+  s_af66166d0b9313::t_3c3952511e2477 4,8,23-24,27-30,35-36,38-39,42-44,59-62,108-112,128-133,148,175-184,187,189,196-198,200-218,221-244
+web/src/lib/utils.ts
+  s_af66166d0b9313::t_c294bbfe5a69b1 30-32
+web/src/pages/diff-page.tsx
+  s_af66166d0b9313::t_bf664b0c0ea3fa 36,38-40,127
+web/src/test/api-contract.test.ts
+  s_af66166d0b9313::t_2d3357a1170473 1-46
+web/src/test/bench-reducer.test.ts
+  s_af66166d0b9313::t_0d358972163151 1-36
+web/src/test/failure-analysis.test.tsx
+  s_af66166d0b9313::t_d319a2c10d5867 91-103,106-108
+web/src/test/setup.ts
+  s_af66166d0b9313::t_18a03ef65e069b 2-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "aeda778fda2e22f4fc3d24e0781ae221d90d75a6",
+  "prompts": {},
+  "sessions": {
+    "s_af66166d0b9313": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a8c48d8763011d177",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
