@@ -1,0 +1,37 @@
+ckl_bench/core/run_manager.py
+  s_115e5b828b65c3::t_4bfe5aad1f51f8 187-188,267-275,286,297-329,331-338,340,342-343
+ckl_bench/core/runner.py
+  s_115e5b828b65c3::t_7a36af2ee89049 32,34-35,37,120,169,182,187,191,228-236,247-256,360-361,389-394,416,425-428,436,438,446-447,468,471-478,574-581,584-594,631-636,672-674,692-696,698-708,727,758
+tests/test_providers.py
+  s_06fe26bf2ebd0f::t_70dc2122668eff 17-18,20
+tests/test_run_manager_contracts.py
+  s_06fe26bf2ebd0f::t_93801e3587eba9 1-65
+tests/test_runner_features.py
+  s_115e5b828b65c3::t_7b6d823f49bbb4 4,78,80-82,112-113,128,135-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4fcefb9f78de58131d6cd506a7c17a0c338c22a3",
+  "prompts": {},
+  "sessions": {
+    "s_06fe26bf2ebd0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48fb3816-35f1-46c1-895c-72aff6d468ec",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    },
+    "s_115e5b828b65c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9b7c9c7c4cd96f9e",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
