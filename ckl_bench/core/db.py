@@ -84,9 +84,28 @@ class RunDB:
     def _initialize_schema(self) -> None:
         version = int(self._conn.execute("PRAGMA user_version").fetchone()[0])
         if version == 0:
-            self._create_schema()
-            self._conn.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
-            return
+            tables = {
+                row[0]
+                for row in self._conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                )
+            }
+            if not tables:
+                self._create_schema()
+                self._conn.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
+                return
+            if tables == {"runs", "results"}:
+                result_columns = {
+                    row[1] for row in self._conn.execute("PRAGMA table_info(results)")
+                }
+                if "result_json" in result_columns:
+                    self._create_schema()
+                    self._conn.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
+                    return
+                if {"run_id", "case_id", "checks_json", "usage_json"} <= result_columns:
+                    self._migrate_v1_to_v2()
+                    return
+            raise RuntimeError("unsupported unversioned database schema")
         if version == 1:
             self._migrate_v1_to_v2()
             return
@@ -117,6 +136,7 @@ class RunDB:
                         result[key] = old[key]
                 self._insert_result(old["run_id"], result)
             self._conn.execute("DROP TABLE results_v1")
+            self._create_schema()
             self._conn.execute(f"PRAGMA user_version={_SCHEMA_VERSION}")
             self._conn.execute("COMMIT")
         except Exception:

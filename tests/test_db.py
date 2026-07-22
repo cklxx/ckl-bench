@@ -153,6 +153,48 @@ class RunDBTests(unittest.TestCase):
         self.assertEqual(len(reopened.get_results("r1")), 1)
         reopened.close()
 
+    def test_unversioned_v1_migrates_and_recreates_result_index(self) -> None:
+        conn = sqlite3.connect(self._db_path)
+        conn.executescript("""
+        CREATE TABLE runs (
+            run_id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'pending',
+            adapter TEXT, adapter_display TEXT, judge TEXT, reviewer TEXT, verifier TEXT,
+            total INTEGER DEFAULT 0, passed INTEGER DEFAULT 0, failed INTEGER DEFAULT 0,
+            score REAL DEFAULT 0, pass_rate REAL DEFAULT 0, cost_usd REAL DEFAULT 0,
+            total_tokens INTEGER DEFAULT 0, started_at REAL, completed_at REAL,
+            summary_json TEXT, progress_json TEXT, error TEXT
+        );
+        CREATE TABLE results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, case_id TEXT NOT NULL,
+            passed INTEGER, score REAL, capability TEXT, difficulty TEXT, checks_json TEXT,
+            response_text TEXT, error TEXT, usage_json TEXT, cost_usd REAL, latency_ms REAL
+        );
+        CREATE INDEX idx_results_run_id ON results(run_id);
+        INSERT INTO runs (run_id,status) VALUES ('r1','completed');
+        INSERT INTO results (run_id,case_id,passed,score,checks_json,usage_json)
+            VALUES ('r1','c1',1,1.0,'[]','{}');
+        """)
+        conn.close()
+
+        db = RunDB(self._db_path)
+        self.assertEqual(db.get_results("r1")[0]["case_id"], "c1")
+        index_names = {
+            row[1] for row in db._conn.execute("PRAGMA index_list(results)")
+        }
+        self.assertIn("idx_results_run_id", index_names)
+        db.close()
+
+    def test_unversioned_unknown_schema_is_not_modified(self) -> None:
+        conn = sqlite3.connect(self._db_path)
+        conn.executescript("CREATE TABLE marker(value TEXT); INSERT INTO marker VALUES ('keep');")
+        conn.close()
+        with self.assertRaisesRegex(RuntimeError, "unsupported unversioned database schema"):
+            RunDB(self._db_path)
+        conn = sqlite3.connect(self._db_path)
+        self.assertEqual(conn.execute("SELECT value FROM marker").fetchone()[0], "keep")
+        self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 0)
+        conn.close()
+
     def test_unknown_schema_is_not_destroyed(self) -> None:
         conn = sqlite3.connect(self._db_path)
         conn.executescript("CREATE TABLE marker(value TEXT); INSERT INTO marker VALUES ('keep'); PRAGMA user_version=99;")
