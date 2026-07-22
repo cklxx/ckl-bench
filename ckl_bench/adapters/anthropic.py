@@ -33,7 +33,9 @@ class AnthropicAdapter:
         if not model:
             raise ValueError("anthropic adapter requires --model or ANTHROPIC_MODEL")
         self.model = model
-        self.temperature = float(config.get("temperature", 0))
+        self.temperature = (
+            float(config["temperature"]) if config.get("temperature") is not None else None
+        )
         self.max_tokens = int(config.get("max_tokens", 512))
         self.version = config.get("anthropic_version", "2023-06-01")
         self.trusted_local = bool(config.get("trusted_local", False))
@@ -57,8 +59,9 @@ class AnthropicAdapter:
             "model": self.model,
             "messages": messages,
             "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
         }
+        if self.temperature is not None:
+            payload["temperature"] = self.temperature
         if system_parts:
             payload["system"] = "\n\n".join(system_parts)
 
