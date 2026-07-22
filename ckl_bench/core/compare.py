@@ -41,15 +41,22 @@ def load_run(path: str | Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     return summary, results
 
 
+def _number(value: Any) -> float | None:
+    return None if value is None else float(value)
+
+
 def _classify(a: dict[str, Any] | None, b: dict[str, Any] | None) -> str:
     if a is None:
         return "added"
     if b is None:
         return "removed"
-    a_pass, b_pass = bool(a["passed"]), bool(b["passed"])
+    a_pass, b_pass = a.get("passed"), b.get("passed")
+    a_score, b_score = _number(a.get("score")), _number(b.get("score"))
+    if a_pass is None or b_pass is None or a_score is None or b_score is None:
+        return "indeterminate"
     if a_pass != b_pass:
         return "improved" if b_pass else "regressed"
-    delta = float(b["score"]) - float(a["score"])
+    delta = b_score - a_score
     if delta > SCORE_EPSILON:
         return "improved"
     if delta < -SCORE_EPSILON:
@@ -58,7 +65,7 @@ def _classify(a: dict[str, Any] | None, b: dict[str, Any] | None) -> str:
 
 
 # Sort order: regressions first (most actionable), then improvements, etc.
-_ORDER = {"regressed": 0, "improved": 1, "added": 2, "removed": 3, "unchanged": 4}
+_ORDER = {"regressed": 0, "indeterminate": 1, "improved": 2, "added": 3, "removed": 4, "unchanged": 5}
 
 
 def _comparability(
@@ -109,21 +116,21 @@ def compare_runs(
     all_ids = list(by_a.keys()) + [cid for cid in by_b if cid not in by_a]
 
     cases: list[dict[str, Any]] = []
-    counts = {"improved": 0, "regressed": 0, "unchanged": 0, "added": 0, "removed": 0}
+    counts = {status: 0 for status in _ORDER}
     for case_id in all_ids:
         a, b = by_a.get(case_id), by_b.get(case_id)
         status = _classify(a, b)
         counts[status] += 1
-        a_score = float(a["score"]) if a else None
-        b_score = float(b["score"]) if b else None
+        a_score = _number(a.get("score")) if a else None
+        b_score = _number(b.get("score")) if b else None
         cases.append(
             {
                 "case_id": case_id,
                 "status": status,
                 "a_score": a_score,
                 "b_score": b_score,
-                "a_passed": bool(a["passed"]) if a else None,
-                "b_passed": bool(b["passed"]) if b else None,
+                "a_passed": a.get("passed") if a else None,
+                "b_passed": b.get("passed") if b else None,
                 "delta": (b_score - a_score) if (a_score is not None and b_score is not None) else None,
             }
         )
@@ -131,16 +138,20 @@ def compare_runs(
     comparability_status, comparability_differences, comparability_warning = _comparability(
         summary_a, summary_b
     )
-    score_a = float(summary_a.get("score") or 0.0)
-    score_b = float(summary_b.get("score") or 0.0)
+    score_a = _number(summary_a.get("score"))
+    score_b = _number(summary_b.get("score"))
     aggregate_verdict = None
-    if comparability_status == "compatible":
+    comparable = comparability_status == "compatible" and score_a is not None and score_b is not None
+    if comparable:
         delta = score_b - score_a
         aggregate_verdict = (
             "improved" if delta > SCORE_EPSILON
             else "regressed" if delta < -SCORE_EPSILON
             else "unchanged"
         )
+    elif comparability_status == "compatible":
+        comparability_status = "indeterminate"
+        comparability_warning = "one or both runs are incomplete or unscored"
 
     return {
         "run_a": summary_a.get("run_id", "A"),
@@ -149,7 +160,7 @@ def compare_runs(
         "adapter_b": summary_b.get("adapter"),
         "score_a": score_a,
         "score_b": score_b,
-        "score_delta": (score_b - score_a) if comparability_status == "compatible" else None,
+        "score_delta": (score_b - score_a) if comparable else None,
         "aggregate_verdict": aggregate_verdict,
         "comparability": {
             "status": comparability_status,

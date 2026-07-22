@@ -560,9 +560,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
         render_terminal_report(summary, result["results"], result["run_dir"])
         + f"report: {result['report_path']}"
     )
-    if args.fail_on_failed_cases and summary["failed"]:
+    unhealthy = any(summary.get(key, 0) for key in ("failed", "errored", "cancelled", "incomplete"))
+    if args.fail_on_failed_cases and unhealthy:
         return 3
-    if args.fail_under is not None and summary["score"] < args.fail_under:
+    score = summary.get("score")
+    if args.fail_under is not None and (score is None or score < args.fail_under):
         return 3
     return 0
 
@@ -1158,15 +1160,15 @@ def _run_probe_target(target: dict[str, Any], base_dir: Path) -> dict[str, Any]:
         )
         summary = result["summary"]
         detail = f"{summary['passed']}/{summary['total']} cases | {result['run_dir']}"
-        if summary["failed"]:
-            reason = _probe_failure_reason(result.get("results", []))
-            if reason:
-                detail = f"{detail} | {reason}"
+        failed = any(summary.get(key, 0) for key in ("failed", "errored", "cancelled", "incomplete"))
+        reason = _probe_failure_reason(result.get("results", [])) if failed else ""
+        if reason:
+            detail = f"{detail} | {reason}"
         return {
             "target": target["target"],
             "kind": target["kind"],
-            "status": "pass" if summary["failed"] == 0 else "fail",
-            "score": summary["score"],
+            "status": "fail" if failed or summary.get("score") is None else "pass",
+            "score": summary.get("score"),
             "detail": detail,
         }
     except Exception as exc:  # noqa: BLE001 - probe must report every target.
@@ -1174,7 +1176,7 @@ def _run_probe_target(target: dict[str, Any], base_dir: Path) -> dict[str, Any]:
             "target": target["target"],
             "kind": target["kind"],
             "status": "fail",
-            "score": 0.0,
+            "score": None,
             "detail": f"{type(exc).__name__}: {exc}",
         }
 
@@ -1233,9 +1235,11 @@ def _run_smoke_step(
         RunOptions(out_dir=out_dir or Path("runs"), run_name=run_name),
     )
     summary = result["summary"]
+    score = summary.get("score")
+    score_text = "N/A" if score is None else f"{float(score):.3f}"
     print(
         f"{label}: cases={summary['total']} passed={summary['passed']} "
-        f"failed={summary['failed']} score={summary['score']:.3f}"
+        f"failed={summary['failed']} score={score_text}"
     )
     return result
 

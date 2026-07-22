@@ -8,25 +8,29 @@ from typing import Any
 _WEB_TEMPLATE = Path(__file__).resolve().parent.parent / "web" / "index.html"
 
 
-def _render_react_page(data: dict[str, Any]) -> str:
-    """Inject *data* into the pre-built React app template.
-
-    The template is a self-contained HTML file (JS/CSS inlined by
-    vite-plugin-singlefile).  We inject ``window.__CKL_BENCH_DATA__`` so the
-    React app knows which page to render and what data to use.
-    """
-    template = _load_web_template()
-    payload = json.dumps(data, ensure_ascii=False, default=str)
-    injection = (
-        "<script>\n"
-        "  window.__CKL_BENCH_DATA__ = " + payload + ";\n"
-        "</script>\n"
+def _json_for_html(data: dict[str, Any]) -> str:
+    return (
+        json.dumps(data, ensure_ascii=False, default=str)
+        .replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace(" ", "\\u2028")
+        .replace(" ", "\\u2029")
     )
-    # Insert the data script right after <body> so it is available before the
-    # React bundle executes.
+
+
+def _render_react_page(data: dict[str, Any]) -> str:
+    """Inject *data* into the pre-built React app template as inert JSON."""
+    template = _load_web_template()
+    injection = (
+        '<script id="ckl-bench-data" type="application/json">'
+        + _json_for_html(data)
+        + "</script>\n"
+        + "<script>window.__CKL_BENCH_DATA__=JSON.parse("
+        + "document.getElementById('ckl-bench-data').textContent);</script>\n"
+    )
     if "<body>" in template:
         return template.replace("<body>", "<body>\n" + injection, 1)
-    # Fallback: prepend (template should always have <body>).
     return injection + template
 
 
@@ -47,22 +51,29 @@ def _load_web_template() -> str:
     )
 
 
+def _percent(value: Any, width: int = 5) -> str:
+    if value is None:
+        return "N/A".rjust(width + 1)
+    return f"{float(value) * 100:{width}.1f}%"
+
+
 def render_terminal_report(summary: dict[str, Any], results: list[dict[str, Any]], run_dir: str) -> str:
-    score = float(summary.get("score", 0.0))
+    score = summary.get("score")
+    score_line = "Score  N/A" if score is None else f"Score  {_bar(float(score), 28)}  {_percent(score)}{_ci_suffix(summary.get('score_ci'))}"
     errored = summary.get("errored", 0)
     errored_part = f"  |  errored {errored}" if errored else ""
     lines = [
         "",
-        f"Score  {_bar(score, 28)}  {score * 100:5.1f}%{_ci_suffix(summary.get('score_ci'))}",
+        score_line,
         f"Cases  {summary['passed']}/{summary['total']} passed  |  failed {summary['failed']}"
         f"{errored_part}  |  run {run_dir}",
     ]
     repeat = int(summary.get("repeat", 1) or 1)
     if repeat > 1:
         lines.append(
-            f"Reps   {repeat}x  |  pass@1 {summary.get('pass_at_1', 0.0) * 100:4.1f}%  "
-            f"pass@{repeat} {summary.get('pass_at_k', 0.0) * 100:4.1f}%  "
-            f"pass^{repeat} {summary.get('pass_pow_k', 0.0) * 100:4.1f}%"
+            f"Reps   {repeat}x  |  pass@1 {_percent(summary.get('pass_at_1'), 4)}  "
+            f"pass@{repeat} {_percent(summary.get('pass_at_k'), 4)}  "
+            f"pass^{repeat} {_percent(summary.get('pass_pow_k'), 4)}"
         )
     usage = summary.get("usage") or {}
     if usage.get("total_tokens"):
@@ -79,13 +90,14 @@ def render_terminal_report(summary: dict[str, Any], results: list[dict[str, Any]
         lines.append("")
         lines.append("Capability")
         lines.extend(capability_lines)
-    failed = [result for result in results if not result.get("passed")]
+    failed = [result for result in results if result.get("passed") is not True]
     if failed:
         lines.append("")
         lines.append("Failures")
         for result in failed[:8]:
             reason = _first_failure_reason(result)
-            lines.append(f"- {result['case_id']}  score={float(result['score']):.2f}  {reason}")
+            score_text = "N/A" if result.get("score") is None else f"{float(result['score']):.2f}"
+            lines.append(f"- {result['case_id']}  score={score_text}  {reason}")
     lines.append("")
     return "\n".join(lines)
 
@@ -118,14 +130,13 @@ def render_diff_terminal(diff: dict[str, Any]) -> str:
     comparability = diff.get("comparability") or {"status": "unknown", "differences": []}
     status = comparability.get("status", "unknown")
     delta = diff.get("score_delta")
+    score_a = _percent(diff.get("score_a"))
+    score_b = _percent(diff.get("score_b"))
     if delta is None:
-        score_line = (
-            f"Score  {diff['score_a'] * 100:5.1f}%  ->  {diff['score_b'] * 100:5.1f}%  "
-            "(aggregate verdict suppressed)"
-        )
+        score_line = f"Score  {score_a}  ->  {score_b}  (aggregate verdict suppressed)"
     else:
         score_line = (
-            f"Score  {diff['score_a'] * 100:5.1f}%  ->  {diff['score_b'] * 100:5.1f}%  "
+            f"Score  {score_a}  ->  {score_b}  "
             f"({'+' if delta >= 0 else ''}{delta * 100:.1f} pts)"
         )
     lines = [
@@ -142,13 +153,13 @@ def render_diff_terminal(diff: dict[str, Any]) -> str:
     differences = comparability.get("differences") or []
     for difference in differences[:5]:
         lines.append(f"  differs: {difference.get('path')}")
-    changed = [c for c in diff["cases"] if c["status"] in {"regressed", "improved", "added", "removed"}]
+    changed = [c for c in diff["cases"] if c["status"] != "unchanged"]
     if changed:
         lines.append("")
         for case in changed[:20]:
             a = "-" if case["a_score"] is None else f"{case['a_score'] * 100:5.1f}%"
             b = "-" if case["b_score"] is None else f"{case['b_score'] * 100:5.1f}%"
-            mark = {"regressed": "DOWN", "improved": "UP  ", "added": "NEW ", "removed": "GONE"}[case["status"]]
+            mark = {"regressed": "DOWN", "improved": "UP  ", "added": "NEW ", "removed": "GONE", "indeterminate": "UNKNOWN"}[case["status"]]
             lines.append(f"  {mark}  {a} -> {b}  {case['case_id']}")
         if len(changed) > 20:
             lines.append(f"  ... and {len(changed) - 20} more changed cases")
@@ -180,7 +191,7 @@ def write_probe_html_report(path: Path, rows: list[dict[str, Any]]) -> Path:
     failed = sum(1 for row in rows if row["status"] == "fail")
     skipped = sum(1 for row in rows if row["status"] == "skip")
     avg_scores = [float(row["score"]) for row in rows if row.get("score") is not None]
-    score = sum(avg_scores) / len(avg_scores) if avg_scores else 0.0
+    score = sum(avg_scores) / len(avg_scores) if avg_scores else None
     summary = {
         "run_id": path.parent.name,
         "adapter": "probe",
@@ -248,7 +259,14 @@ def _ci_suffix(ci: Any) -> str:
 def _capability_lines(by_capability: dict[str, Any]) -> list[str]:
     lines: list[str] = []
     for capability, bucket in sorted(by_capability.items()):
-        score = float(bucket["score"])
+        score = bucket.get("score")
+        if score is None:
+            lines.append(
+                f"- {capability.ljust(22)} {'N/A'.ljust(18)} "
+                f"  N/A  {bucket['passed']}/{bucket['count']}"
+            )
+            continue
+        score = float(score)
         lines.append(
             f"- {capability.ljust(22)} {_bar(score)} "
             f"{score * 100:5.1f}%  {bucket['passed']}/{bucket['count']}"

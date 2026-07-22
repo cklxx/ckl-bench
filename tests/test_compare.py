@@ -12,7 +12,7 @@ def results(*pairs: tuple[str, bool, float]) -> list[dict]:
     return [{"case_id": cid, "passed": p, "score": s} for cid, p, s in pairs]
 
 
-def summary(run_id: str, score: float, signature: str | None = "same", policy: dict | None = None) -> dict:
+def summary(run_id: str, score: float | None, signature: str | None = "same", policy: dict | None = None) -> dict:
     manifest = {}
     if signature is not None:
         manifest = {"comparability_signature": signature, "comparability": policy or {"seed": 0}}
@@ -72,6 +72,17 @@ class CompareTests(unittest.TestCase):
         )
         self.assertEqual(diff["comparability"]["status"], "unknown")
         self.assertIsNotNone(diff["comparability"]["warning"])
+        self.assertIsNone(diff["aggregate_verdict"])
+
+    def test_unscored_compare_is_indeterminate(self) -> None:
+        diff = compare_runs(
+            summary("A", None), [{"case_id": "x", "passed": None, "score": None}],
+            summary("B", 1.0), results(("x", True, 1.0)),
+        )
+        self.assertEqual(diff["comparability"]["status"], "indeterminate")
+        self.assertEqual(diff["cases"][0]["status"], "indeterminate")
+        self.assertIsNone(diff["score_a"])
+        self.assertIsNone(diff["score_delta"])
         self.assertIsNone(diff["aggregate_verdict"])
 
     def test_load_run_from_dir(self) -> None:
