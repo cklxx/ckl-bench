@@ -136,7 +136,6 @@ export function applyProgressEvent(runs: RunInfo[], event: ProgressEvent): RunIn
 
 // Built-in CLI adapters run through the command wrapper; discovered providers
 // are launched by their registry target instead.
-const BUILTIN_CLI_ADAPTER_KEYS = new Set(["claude-code", "codex", "dsx"]);
 
 export function BenchPage() {
   const t = useT();
@@ -250,28 +249,14 @@ export function BenchPage() {
 
   // Launch a run for one pack + one adapter.
   const launchPackAdapter = async (packName: string, adapterKey: string) => {
-    const adapterConfig = settings?.adapters[adapterKey] || {};
-    const pack = packs.find((p) => p.name === packName);
-    const caseCount = pack?.cases.length || 0;
-    const isBuiltin = BUILTIN_CLI_ADAPTER_KEYS.has(adapterKey);
-    const params: any = isBuiltin
-      ? {
-          adapter: "command",
-          adapter_config: {
-            command: adapterConfig.command || "",
-            ...(adapterConfig.model && { model: adapterConfig.model }),
-          },
-        }
-      : {
-          adapter_target: adapterKey,
-        };
+    const pack = packs.find((item) => item.name === packName);
+    const caseCount = pack?.cases.length ?? 0;
+    const params: Record<string, unknown> = { adapter: adapterKey };
     params.case_paths = [`cases/${packName}`];
     params.repeat = settings?.defaults.repeat ?? 1;
     params.concurrency = settings?.defaults.concurrency ?? 1;
     params.seed = settings?.defaults.seed ?? 0;
     if (settings?.defaults.judge) params.judge = settings.defaults.judge;
-    if (settings?.defaults.reviewer) params.reviewer = settings.defaults.reviewer;
-    if (settings?.defaults.verifier) params.verifier = settings.defaults.verifier;
     try {
       const result = await launchRun(params);
       setRuns((prev) => [
@@ -293,7 +278,7 @@ export function BenchPage() {
           },
           summary: {
             run_id: result.run_id,
-            adapter: isBuiltin ? "command" : adapterKey,
+            adapter: adapterKey,
             adapter_display: adapterKey,
             manifest: { case_paths: [`cases/${packName}`] },
             total: 0,
