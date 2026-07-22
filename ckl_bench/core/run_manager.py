@@ -27,12 +27,6 @@ from ckl_bench.core.runner import RunOptions, run_cases
 
 _log = logging.getLogger(__name__)
 
-#: Default judge target when ``--judge`` / ``CKL_JUDGE`` / settings judge are
-#: all unset.  dsx is a capable, dependency-light command agent that works out
-#: of the box via ``scripts/dsx_wrapper.py``.
-DEFAULT_JUDGE_TARGET = "dsx"
-
-
 def _normalize_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Ensure every result has a well-formed ``capability`` list.
 
@@ -190,11 +184,8 @@ class RunManager:
             config = dict(adapter_config or {})
             adapter = build_adapter(adapter_name, config)
 
-        # Judge/reviewer/verifier adapters (reviewer & verifier are optional
-        # adversarial-pipeline stages that challenge and finalise the judge).
-        # The judge defaults to dsx when no target is specified, so quality
-        # expectations are graded out of the box.
-        judge_target = judge_target or DEFAULT_JUDGE_TARGET
+        # Judge/reviewer/verifier adapters are explicit; there is no hidden
+        # dashboard-only judge default.
         judge_adapter = _resolve(judge_target)
         reviewer_adapter = _resolve(reviewer_target)
         verifier_adapter = _resolve(verifier_target)
@@ -272,12 +263,16 @@ class RunManager:
             _log.exception("run %s failed", run_id)
         finally:
             state.completed_at = time.time()
-            # Persist final state and results to SQLite.
             if self._db is not None:
-                if result is not None:
-                    self._db.finish_run(self._state_to_dict(state), result.get("results", []))
-                else:
-                    self._db.upsert_run(self._state_to_dict(state))
+                try:
+                    if result is not None:
+                        self._db.finish_run(self._state_to_dict(state), result.get("results", []))
+                    else:
+                        self._db.upsert_run(self._state_to_dict(state))
+                except Exception as exc:  # noqa: BLE001 - disk artifacts remain canonical
+                    persistence_error = f"persistence failed: {type(exc).__name__}"
+                    state.error = f"{state.error}; {persistence_error}" if state.error else persistence_error
+                    _log.exception("persisting run %s failed", run_id)
             with self._lock:
                 self._threads.pop(run_id, None)
                 self._cancel_flags.pop(run_id, None)
@@ -288,6 +283,7 @@ class RunManager:
                     "status": state.status,
                     "summary": state.summary,
                     "error": state.error,
+                    "progress": state.progress,
                 }
             )
 
@@ -298,32 +294,53 @@ class RunManager:
             if state is None:
                 return
             progress = state.progress
-            if event["type"] == "run_started":
-                total = event.get("total_cases", 0) * event.get("repeat", 1)
-                progress.update({"total": total, "started": 0, "completed": 0,
-                                 "passed": 0, "failed": 0, "error": 0,
-                                 "cancelled": 0, "repeat": event.get("repeat", 1),
-                                 "cases": {}})
-            elif event["type"] == "case_started":
-                progress["started"] = progress.get("started", 0) + 1
-                attempts = progress.setdefault("cases", {}).setdefault(event["case_id"], {})
-                attempts[str(event.get("attempt", 0))] = {"status": "running"}
-            elif event["type"] == "case_completed":
-                progress["completed"] = progress.get("completed", 0) + 1
-                if event.get("error"):
-                    progress["error"] = progress.get("error", 0) + 1
-                elif event.get("passed"):
-                    progress["passed"] = progress.get("passed", 0) + 1
-                else:
-                    progress["failed"] = progress.get("failed", 0) + 1
-                attempts = progress.setdefault("cases", {}).setdefault(event["case_id"], {})
-                attempts[str(event.get("attempt", 0))] = {
-                    "status": "error" if event.get("error") else "completed",
-                    "score": event.get("score"), "passed": event.get("passed"),
-                    "error": event.get("error"),
+            event_type = event["type"]
+            if event_type == "run_started":
+                repeat = int(event.get("repeat", 1))
+                total_cases = int(event.get("total_cases", 0))
+                progress.update({
+                    "run_id": run_id,
+                    "status": state.status,
+                    "total_cases": total_cases,
+                    "repeat": repeat,
+                    "planned_attempts": int(event.get("planned_attempts", total_cases * repeat)),
+                    "started_attempts": 0,
+                    "completed_attempts": 0,
+                    "passed_attempts": 0,
+                    "failed_attempts": 0,
+                    "error_attempts": 0,
+                    "cancelled_attempts": 0,
+                    "attempts": {},
+                })
+            elif event_type in {"attempt_started", "case_started"}:
+                progress["started_attempts"] = progress.get("started_attempts", 0) + 1
+                key = f"{event['case_id']}:{event.get('attempt', 0)}"
+                progress.setdefault("attempts", {})[key] = {
+                    "case_id": event["case_id"],
+                    "attempt": event.get("attempt", 0),
+                    "status": "running",
                 }
-            elif event["type"] == "run_completed":
-                pass  # handled in _run_worker
+            elif event_type in {"attempt_completed", "case_completed"}:
+                progress["completed_attempts"] = progress.get("completed_attempts", 0) + 1
+                status = event.get("status") or ("error" if event.get("error") else "completed")
+                if status == "error":
+                    progress["error_attempts"] = progress.get("error_attempts", 0) + 1
+                elif event.get("passed") is True:
+                    progress["passed_attempts"] = progress.get("passed_attempts", 0) + 1
+                else:
+                    progress["failed_attempts"] = progress.get("failed_attempts", 0) + 1
+                key = f"{event['case_id']}:{event.get('attempt', 0)}"
+                progress.setdefault("attempts", {})[key] = {
+                    "case_id": event["case_id"],
+                    "attempt": event.get("attempt", 0),
+                    "status": status,
+                    "score": event.get("score"),
+                    "passed": event.get("passed"),
+                    "error": event.get("error"),
+                    "error_type": event.get("error_type"),
+                }
+            elif event_type == "run_completed":
+                progress["status"] = "completed"
         # Broadcast outside the lock to avoid reentrant deadlock.
         self._broadcast(event)
 

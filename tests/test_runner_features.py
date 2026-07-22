@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -74,10 +75,11 @@ class RunnerFeatureTests(unittest.TestCase):
             res = run_cases([chat_case()], CountingAdapter(), RunOptions(out_dir=Path(tmp), run_name="m"))
             s = res["summary"]
             self.assertIn("manifest", s)
-            self.assertEqual(s["manifest"]["schema_version"], "1.3")
+            self.assertEqual(s["manifest"]["schema_version"], "1.4")
             self.assertEqual(s["manifest"]["scoring_policy_version"], "1.0")
-            self.assertEqual(s["manifest"]["error_policy_version"], "1.0")
-            self.assertEqual(s["manifest"]["repeat_policy_version"], "1.0")
+            self.assertEqual(s["manifest"]["error_policy_version"], "1.1")
+            self.assertEqual(s["manifest"]["repeat_policy_version"], "1.1")
+            self.assertEqual(s["manifest"]["cache_policy_version"], "1.1")
             self.assertEqual(s["manifest"]["model"]["model"], "fake-model")
             self.assertIn("comparability_signature", s["manifest"])
             self.assertEqual(s["manifest"]["comparability"]["cases"][0]["expectations"][0]["kind"], "json_path")
@@ -107,8 +109,8 @@ class RunnerFeatureTests(unittest.TestCase):
             res = run_cases([case], FailingAdapter(), RunOptions(out_dir=Path(tmp), run_name="error"))
         result = res["results"][0]
         self.assertEqual(result["status"], "error")
-        self.assertEqual(result["score"], 0.0)
-        self.assertFalse(result["passed"])
+        self.assertIsNone(result["score"])
+        self.assertIsNone(result["passed"])
         self.assertEqual(result["checks"], [])
         self.assertEqual(result["error_type"], "RuntimeError")
         self.assertEqual(result["error_message"], "adapter boom")
@@ -123,15 +125,44 @@ class RunnerFeatureTests(unittest.TestCase):
         result = res["results"][0]
         # Score averages only completed attempts (error = infra failure, not 0.0)
         self.assertAlmostEqual(result["score"], 1.0)
-        self.assertFalse(result["passed"])
+        self.assertIsNone(result["passed"])
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["attempt_count"], 3)
         self.assertEqual(result["completed_count"], 2)
         self.assertEqual(result["passed_count"], 2)
         self.assertEqual(result["error_count"], 1)
         self.assertEqual([a["status"] for a in result["attempts"]], ["completed", "error", "completed"])
-        # pass@k uses completed_count (errors are infra failures, not model failures)
-        self.assertEqual(result["pass_at_1"], round(2 / 2, 6))
+        # Repeat estimators are invalid when any planned attempt errored.
+        self.assertIsNone(result["pass_at_1"])
+        self.assertIsNone(result["pass_at_k"])
+        self.assertIsNone(res["summary"]["pass_at_k"])
+
+    def test_cancelled_repeat_is_incomplete_without_estimators(self) -> None:
+        cancelled = threading.Event()
+
+        class CancellingAdapter(CountingAdapter):
+            def generate(self, request) -> GenerateResponse:
+                response = super().generate(request)
+                cancelled.set()
+                return response
+
+        with tempfile.TemporaryDirectory() as tmp:
+            res = run_cases(
+                [chat_case()],
+                CancellingAdapter(),
+                RunOptions(
+                    out_dir=Path(tmp), run_name="cancelled", repeat=3,
+                    cancellation_event=cancelled,
+                ),
+            )
+        result = res["results"][0]
+        self.assertEqual(result["status"], "cancelled")
+        self.assertTrue(result["incomplete"])
+        self.assertIsNone(result["passed"])
+        self.assertIsNone(result["pass_at_k"])
+        self.assertEqual(result["attempt_count"], 1)
+        self.assertEqual(res["summary"]["cancelled"], 1)
+        self.assertIsNone(res["summary"]["pass_at_k"])
 
     def test_concurrency_matches_sequential(self) -> None:
         cases = [chat_case(f"c.{i}.v1") for i in range(6)]

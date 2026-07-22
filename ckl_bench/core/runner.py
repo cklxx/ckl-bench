@@ -29,11 +29,12 @@ from .usage import Usage, estimate_cost, load_pricing, normalize_usage
 
 # Bumped when the shape of summary.json / results.jsonl changes in a way that
 # makes older runs non-comparable. Reproducibility tooling reads this.
-SCHEMA_VERSION = "1.3"
+SCHEMA_VERSION = "1.4"
 SCORING_POLICY_VERSION = "1.0"
-ERROR_POLICY_VERSION = "1.0"
-REPEAT_POLICY_VERSION = "1.0"
+ERROR_POLICY_VERSION = "1.1"
+REPEAT_POLICY_VERSION = "1.1"
 COMPARABILITY_POLICY_VERSION = "1.0"
+CACHE_POLICY_VERSION = "1.1"
 
 _SECRET_KEY_RE = re.compile(r"(api[_-]?key|authorization|token|secret|password|credential|cookie)", re.I)
 _SECRET_ARG_RE = re.compile(
@@ -116,6 +117,7 @@ def run_cases(cases: list[EvalCase], adapter: ModelAdapter, options: RunOptions)
             "run_id": run_id,
             "total_cases": len(cases),
             "repeat": repeat,
+            "planned_attempts": len(cases) * repeat,
         },
     )
 
@@ -164,7 +166,7 @@ def _execute(
         _emit_progress(
             options,
             {
-                "type": "case_started",
+                "type": "attempt_started",
                 "run_id": run_id,
                 "case_id": case.id,
                 "case_index": case_index,
@@ -177,14 +179,16 @@ def _execute(
         _emit_progress(
             options,
             {
-                "type": "case_completed",
+                "type": "attempt_completed",
                 "run_id": run_id,
                 "case_id": case.id,
                 "case_index": case_index,
                 "attempt": attempt_index,
+                "status": attempt["status"],
                 "score": attempt["score"],
                 "passed": attempt["passed"],
                 "error": attempt.get("error"),
+                "error_type": attempt.get("error_type"),
             },
         )
         return case_index, attempt_index, attempt
@@ -221,8 +225,15 @@ def _execute(
         if attempts:
             result = _aggregate_case(case, attempts, repeat)
             if len(attempts) < repeat:
-                result["cancelled"] = True
-                result["scheduled_attempts"] = len(attempts)
+                result.update(
+                    status="cancelled",
+                    passed=None,
+                    cancelled=True,
+                    incomplete=True,
+                    scheduled_attempts=len(attempts),
+                )
+                for key in ("pass_at_1", "pass_at_k", "pass_pow_k"):
+                    result[key] = None
             results.append(result)
         else:
             results.append(_cancelled_case(case, repeat))
@@ -233,11 +244,16 @@ def _cancelled_case(case: EvalCase, repeat: int) -> dict[str, Any]:
     return {
         "case_id": case.id, "title": case.title, "type": case.type,
         "capability": case.capability, "difficulty": case.difficulty,
-        "source": f"{case.source_path}:{case.source_line}", "score": 0.0,
-        "passed": False, "checks": [], "latency_ms": 0.0,
-        "response_text": "", "error": "cancelled", "usage": Usage().as_dict(),
-        "cost_usd": 0.0, "model": None, "cancelled": True,
-        "scheduled_attempts": 0, "repeat": repeat,
+        "source": f"{case.source_path}:{case.source_line}", "status": "cancelled",
+        "score": None, "passed": None, "checks": [], "latency_ms": 0.0,
+        "response_text": "", "error": None, "error_type": None,
+        "error_message": None, "usage": Usage().as_dict(),
+        "estimated_cost_usd": 0.0, "cost_usd": 0.0, "provider_cost_usd": 0.0,
+        "cost_status": "estimated", "model": None, "cancelled": True,
+        "incomplete": True, "attempt_count": 0, "completed_count": 0,
+        "passed_count": 0, "error_count": 0, "scheduled_attempts": 0,
+        "planned_repeat": repeat, "repeat": repeat, "pass_at_1": None,
+        "pass_at_k": None, "pass_pow_k": None, "attempts": [],
     }
 
 
@@ -341,8 +357,8 @@ def _run_attempt_body(
         error_message = None
     else:
         error_type, _, error_message = error.partition(": ")
-        score = 0.0
-        passed = False
+        score = None
+        passed = None
         checks = []
         status = "error"
     estimated_cost = estimate_cost(usage, model, pricing)
@@ -370,9 +386,12 @@ def _run_attempt_body(
     }
     if options.include_raw:
         attempt["raw_response"] = raw_response
-    if workspace_path and options.keep_workspaces and attempt_index == 0:
-        suffix = case.id if repeat == 1 else f"{case.id}/attempt-{attempt_index}"
-        saved = safe_join(run_dir, Path("workspaces") / suffix, label="retained workspace")
+    if workspace_path and options.keep_workspaces:
+        saved = safe_join(
+            run_dir,
+            Path("workspaces") / case.id / f"attempt-{attempt_index}",
+            label="retained workspace",
+        )
         saved.parent.mkdir(parents=True, exist_ok=True)
         copy_tree_safely(workspace_path, saved)
         attempt["workspace_saved"] = str(saved)
@@ -394,7 +413,7 @@ def _aggregate_case(
     c = sum(passes)
     error_count = n - len(completed)
     completed_count = len(completed)
-    agg_score = stats.mean(scores)
+    agg_score = stats.mean(scores) if scores else None
 
     total_usage = Usage()
     for a in attempts:
@@ -403,6 +422,10 @@ def _aggregate_case(
     estimated_cost, provider_cost, known_cost_count, unknown_cost_count = _sum_costs(attempts)
     first_error = next((a["error"] for a in attempts if a.get("error")), None)
 
+    complete = n == repeat
+    status = "error" if error_count else ("completed" if complete else "incomplete")
+    aggregate_passed: bool | None = None if not complete or error_count else all(passes)
+
     result: dict[str, Any] = {
         "case_id": case.id,
         "title": case.title,
@@ -410,9 +433,9 @@ def _aggregate_case(
         "capability": case.capability,
         "difficulty": case.difficulty,
         "source": f"{case.source_path}:{case.source_line}",
-        "status": "error" if error_count else "completed",
+        "status": status,
         "score": agg_score,
-        "passed": error_count == 0 and all(passes),
+        "passed": aggregate_passed,
         "checks": rep["checks"],
         "latency_ms": round(stats.mean([float(a["latency_ms"]) for a in attempts]), 2),
         "response_text": rep["response_text"],
@@ -420,6 +443,8 @@ def _aggregate_case(
         "error_type": next((a.get("error_type") for a in attempts if a.get("error_type")), None),
         "error_message": next((a.get("error_message") for a in attempts if a.get("error_message")), None),
         "attempt_count": n,
+        "planned_repeat": repeat,
+        "incomplete": not complete,
         "completed_count": completed_count,
         "passed_count": c,
         "error_count": error_count,
@@ -440,12 +465,17 @@ def _aggregate_case(
         result["workspace_saved"] = rep["workspace_saved"]
 
     if repeat > 1:
-        result["repeat"] = n
+        result["repeat"] = repeat
         result["passes"] = c
         result["score_values"] = scores
-        result["pass_at_1"] = round(c / completed_count, 6) if completed_count else 0.0
-        result["pass_at_k"] = round(stats.pass_at_k(completed_count, c, completed_count), 6)
-        result["pass_pow_k"] = round(stats.pass_pow_k(completed_count, c, completed_count), 6)
+        if complete and error_count == 0:
+            result["pass_at_1"] = round(c / repeat, 6)
+            result["pass_at_k"] = round(stats.pass_at_k(repeat, c, repeat), 6)
+            result["pass_pow_k"] = round(stats.pass_pow_k(repeat, c, repeat), 6)
+        else:
+            result["pass_at_1"] = None
+            result["pass_at_k"] = None
+            result["pass_pow_k"] = None
         result["attempts"] = [
             {
                 "attempt": a["attempt"],
@@ -541,16 +571,27 @@ def _usage_from_response(response: Any) -> Usage:
 
 
 def _attempt_cache_key(adapter: ModelAdapter, case: EvalCase, attempt_index: int) -> str:
+    request = GenerateRequest(
+        case_id=case.id,
+        messages=case.messages,
+        prompt=case.prompt,
+        workspace_path=None,
+        metadata={**case.metadata, "case_type": case.type},
+        timeout_s=case.timeout_s,
+    )
     return cache_key(
         {
-            "adapter": getattr(adapter, "name", adapter.__class__.__name__),
-            "model": getattr(adapter, "model", None),
-            "temperature": getattr(adapter, "temperature", None),
-            "max_tokens": getattr(adapter, "max_tokens", None),
-            "extra_body": getattr(adapter, "extra_body", None),
-            "messages": case.messages,
-            "prompt": case.prompt,
-            "attempt": attempt_index,
+            "cache_policy_version": CACHE_POLICY_VERSION,
+            "adapter": _adapter_policy(adapter),
+            "request": {
+                "case_id": request.case_id,
+                "messages": request.messages,
+                "prompt": request.prompt,
+                "metadata": request.metadata,
+                "timeout_s": request.timeout_s,
+                "workspace": False,
+                "attempt": attempt_index,
+            },
         }
     )
 
@@ -587,10 +628,12 @@ def _summarize(
     # failures so the dashboard can show "3 passed / 1 failed / 1 errored"
     # instead of burying errors in the failed count.
     errored = sum(1 for r in results if _is_error(r))
-    passed = sum(1 for r in results if r["passed"])
-    failed = total - passed - errored
-    case_scores = [float(r["score"]) for r in results if not _is_error(r)]
-    completed = total - errored
+    cancelled = sum(1 for r in results if r.get("status") == "cancelled")
+    incomplete = sum(1 for r in results if r.get("status") == "incomplete")
+    passed = sum(1 for r in results if r.get("passed") is True)
+    failed = sum(1 for r in results if r.get("passed") is False and not _is_error(r))
+    case_scores = [float(r["score"]) for r in results if r.get("score") is not None and not _is_error(r)]
+    completed = total - errored - cancelled - incomplete
 
     # When no cases were evaluated, score/pass_rate are null (not 0.0) so the
     # dashboard can distinguish "not run" from "scored 0".
@@ -626,6 +669,9 @@ def _summarize(
         "passed": passed,
         "failed": failed,
         "errored": errored,
+        "cancelled": cancelled,
+        "incomplete": incomplete,
+        "completed": completed,
         "score": score,
         "pass_rate": pass_rate,
         "pass_rate_ci": pass_rate_ci,
@@ -643,10 +689,23 @@ def _summarize(
         "manifest": _build_manifest(cases, adapter, options, repeat),
     }
     if repeat > 1:
+        valid_repeat_results = [
+            r for r in results
+            if r.get("status") == "completed"
+            and all(r.get(key) is not None for key in ("pass_at_1", "pass_at_k", "pass_pow_k"))
+        ]
         summary["repeat"] = repeat
-        summary["pass_at_1"] = round(stats.mean([float(r.get("pass_at_1", 0.0)) for r in results]), 6) if completed else None
-        summary["pass_at_k"] = round(stats.mean([float(r.get("pass_at_k", 0.0)) for r in results]), 6) if completed else None
-        summary["pass_pow_k"] = round(stats.mean([float(r.get("pass_pow_k", 0.0)) for r in results]), 6) if completed else None
+        summary["planned_attempts"] = len(cases) * repeat
+        summary["attempted_attempts"] = sum(int(r.get("attempt_count", 0)) for r in results)
+        summary["completed_attempts"] = sum(int(r.get("completed_count", 0)) for r in results)
+        if len(valid_repeat_results) == total:
+            summary["pass_at_1"] = round(stats.mean([float(r["pass_at_1"]) for r in valid_repeat_results]), 6)
+            summary["pass_at_k"] = round(stats.mean([float(r["pass_at_k"]) for r in valid_repeat_results]), 6)
+            summary["pass_pow_k"] = round(stats.mean([float(r["pass_pow_k"]) for r in valid_repeat_results]), 6)
+        else:
+            summary["pass_at_1"] = None
+            summary["pass_at_k"] = None
+            summary["pass_pow_k"] = None
     return summary
 
 
@@ -665,6 +724,7 @@ def _build_manifest(
         "error_policy_version": ERROR_POLICY_VERSION,
         "repeat_policy_version": REPEAT_POLICY_VERSION,
         "comparability_policy_version": COMPARABILITY_POLICY_VERSION,
+        "cache_policy_version": CACHE_POLICY_VERSION,
         "comparability_signature": f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}",
         "comparability": comparability,
         "ckl_bench_version": _ckl_bench_version(),
@@ -695,6 +755,7 @@ def _comparability_policy(
             "scoring": SCORING_POLICY_VERSION,
             "error": ERROR_POLICY_VERSION,
             "repeat": REPEAT_POLICY_VERSION,
+            "cache": CACHE_POLICY_VERSION,
         },
         "cases": [_sanitize(case_to_dict(case)) for case in cases],
         "primary_adapter": _adapter_policy(adapter),

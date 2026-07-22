@@ -14,10 +14,10 @@ class DsxProviderTests(unittest.TestCase):
         self.assertEqual(provider["adapter"], "command")
         self.assertEqual(provider["config"].get("command"), "dsx")
 
-    def test_default_judge_target_is_dsx(self) -> None:
-        from ckl_bench.core.run_manager import DEFAULT_JUDGE_TARGET
+    def test_run_manager_has_no_hidden_judge_default(self) -> None:
+        from ckl_bench.core import run_manager
 
-        self.assertEqual(DEFAULT_JUDGE_TARGET, "dsx")
+        self.assertFalse(hasattr(run_manager, "DEFAULT_JUDGE_TARGET"))
 
     def test_resolve_dsx_builds_command_adapter(self) -> None:
         from ckl_bench.core.run_manager import _resolve
