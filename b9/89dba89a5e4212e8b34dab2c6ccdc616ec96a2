@@ -1,0 +1,35 @@
+ckl_bench/adapters/_http.py
+  s_06fe26bf2ebd0f::t_6b97b2de90ff3d 58
+ckl_bench/cli.py
+  s_06fe26bf2ebd0f::t_fca667aeb87a66 377-380,655,683-684
+ckl_bench/core/compare.py
+  s_06fe26bf2ebd0f::t_80491158913cc7 144,146,152-156,165
+ckl_bench/core/run_manager.py
+  s_06fe26bf2ebd0f::t_9bfeb7b28349d6 410,416,419
+ckl_bench/core/runner.py
+  s_06fe26bf2ebd0f::t_a3dbe2a95de36b 52
+ckl_bench/core/sandbox.py
+  s_06fe26bf2ebd0f::t_75e88795dbe0fe 150
+ckl_bench/core/server.py
+  s_06fe26bf2ebd0f::t_daefa4be2025c3 19,24,79-80,131,144,194
+tests/test_server.py
+  s_06fe26bf2ebd0f::t_b4ab91f0e5631f 5,171-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b989dba89a5e4212e8b34dab2c6ccdc616ec96a2",
+  "prompts": {},
+  "sessions": {
+    "s_06fe26bf2ebd0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48fb3816-35f1-46c1-895c-72aff6d468ec",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
