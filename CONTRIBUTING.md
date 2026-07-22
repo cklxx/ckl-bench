@@ -20,10 +20,18 @@ keep it fast, portable, and evidence-oriented are very welcome.
 
 ```bash
 # No install needed for the stdlib core.
-python -m ckl_bench validate           # validate every case file
-python -m unittest discover -s tests   # run the unit tests
-python -m ckl_bench smoke              # mock chat + command-agent smoke
+python scripts/sync_resources.py --check  # packaged copies match canonical roots
+python -m ckl_bench validate              # validate every case file
+python -m unittest discover -s tests      # run the unit tests
+python -m ckl_bench smoke                 # mock chat + command-agent smoke
 ```
+
+`cases/`, `configs/`, and `registries/` are canonical. After editing them, run
+`python scripts/sync_resources.py` to regenerate `ckl_bench/resources/`.
+
+Frontend development requires Node 22.12+ (pinned to Node 22 in `.nvmrc`) or
+Node 20.19+. Use `npm ci` and `npm run build:copy` from `web/`; the committed
+`ckl_bench/web/index.html` must exactly match the build output.
 
 `uv run ckl ...` and `uv run ckl-bench ...` work after cloning.
 

@@ -192,13 +192,30 @@ support.
 
 ```bash
 cd web
-npm install
-npm run build:copy    # builds + copies dist/index.html into ckl_bench/web/
-npm run dev           # live dev server (data falls back to empty state)
+nvm use                  # Node 22.12+; Node 20 requires >=20.19
+npm ci
+npm run build:copy       # builds + copies dist/index.html into ckl_bench/web/
+npm run dev              # live dev server (data falls back to empty state)
 ```
 
 The pre-built template is committed at `ckl_bench/web/index.html`, so the
-package works out of the box without building the frontend.
+package works out of the box without building the frontend. CI rebuilds the app
+and requires byte-for-byte equality with that packaged HTML.
+
+## Packaged Resources
+
+The writable checkout directories `cases/`, `configs/`, and `registries/` are
+the canonical sources. Their copies under `ckl_bench/resources/` are generated
+package data, not a second editing surface.
+
+```bash
+python scripts/sync_resources.py          # update package copies
+python scripts/sync_resources.py --check  # fail on missing, stale, or changed copies
+```
+
+Run the sync command after changing any canonical resource. CI also builds and
+installs the wheel into a clean directory, then runs validate, smoke, registry,
+resource, and frontend availability checks against the installed package.
 
 ## Frontier-breaker cases
 

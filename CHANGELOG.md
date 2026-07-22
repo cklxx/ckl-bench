@@ -91,6 +91,16 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   3.10–3.13, plus a package build check.
 
 ### Changed
+- Checkout wrapper scripts are thin package shims; the duplicate
+  `scripts/_common.py` implementation was removed without changing wrapper
+  runtime, security, or stdin/stdout contracts.
+- Root `cases/`, `configs/`, and `registries/` are canonical. A deterministic
+  stdlib sync/check command generates package resources and CI rejects drift.
+- Frontend builds now require Node 20.19+ or Node 22.12+ (`.nvmrc` pins Node 22),
+  and CI verifies the rebuilt single-file HTML exactly matches the packaged
+  template.
+- Release CI installs the wheel in a clean directory and runs validate, smoke,
+  registry, packaged-resource, frontend-availability, and entry-point checks.
 - Result schema is now `1.3`: scoring, execution-error, repeat, cost, and
   comparability policies are explicit. Adapter failures cannot aggregate into a
   passing case, unknown pricing remains unknown, and regression gates reject

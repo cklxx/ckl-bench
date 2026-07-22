@@ -40,15 +40,35 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Check generated package resources
+        run: python scripts/sync_resources.py --check
+
       - name: Build
         run: |
           python -m pip install --upgrade build
           python -m build
+      - name: Validate wheel from a clean directory
+        run: |
+          python -m venv "$RUNNER_TEMP/wheel-venv"
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m pip install dist/*.whl
+          mkdir "$RUNNER_TEMP/wheel-smoke"
+          cd "$RUNNER_TEMP/wheel-smoke"
+          "$RUNNER_TEMP/wheel-venv/bin/ckl" validate
+          "$RUNNER_TEMP/wheel-venv/bin/ckl" smoke
+          "$RUNNER_TEMP/wheel-venv/bin/ckl" namespaces >/dev/null
+          "$RUNNER_TEMP/wheel-venv/bin/python" - <<'PY'
+          from ckl_bench.core.reporting import _load_web_template
+          from ckl_bench.resources import resource_path
+
+          assert (resource_path("cases/chat") / "hard_programming.jsonl").is_file()
+          assert (resource_path("configs") / "mock.responses.json").is_file()
+          assert (resource_path("registries/models") / "deepseekv4.jsonl").is_file()
+          assert "<html" in _load_web_template()
+          PY
       - name: Check entry points import
         run: |
-          python -m pip install dist/*.whl
-          ckl --help >/dev/null
-          ckl-bench --help >/dev/null
+          "$RUNNER_TEMP/wheel-venv/bin/ckl" --help >/dev/null
+          "$RUNNER_TEMP/wheel-venv/bin/ckl-bench" --help >/dev/null
 
   web:
     name: web (test + build)
@@ -60,7 +80,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: .nvmrc
           cache: "npm"
           cache-dependency-path: web/package-lock.json
       - name: Install dependencies
@@ -71,3 +91,5 @@ jobs:
         run: npm run lint
       - name: Build
         run: npm run build
+      - name: Check packaged HTML is current
+        run: cmp dist/index.html ../ckl_bench/web/index.html
