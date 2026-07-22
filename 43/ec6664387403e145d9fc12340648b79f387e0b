@@ -1,0 +1,23 @@
+ckl_bench/core/compare.py
+  s_10294b6435e77e::t_885ac766ea544c 44-47,53-56,59,68,119,124-125,132-133,141-142,144-145,152-154,163
+ckl_bench/core/reporting.py
+  s_10294b6435e77e::t_69f14f377a5871 11-19,21-23,26-30,54-59,61-62,67,74-76,93,99-100,133-134,136,139,156,162,194,262-269
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "43ec6664387403e145d9fc12340648b79f387e0b",
+  "prompts": {},
+  "sessions": {
+    "s_10294b6435e77e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3b0e07658521c926",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
