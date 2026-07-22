@@ -1,0 +1,43 @@
+.github/workflows/ci.yml
+  s_0e17df91604878::t_eaed52021b63b2 43-45,50-67,70-71,83,94-95
+.nvmrc
+  s_0e17df91604878::t_0a98ac899c3737 1
+ckl_bench/resources/configs/anthropic.example.json
+  s_0e17df91604878::t_0b391b0037a40d 1-5
+ckl_bench/resources/configs/command.example.json
+  s_0e17df91604878::t_ba24040e890286 1-4
+ckl_bench/resources/configs/gemini.example.json
+  s_0e17df91604878::t_2a164d1412c471 1-5
+ckl_bench/resources/configs/http-json.example.json
+  s_0e17df91604878::t_cd9ddd29c76c37 1-7
+ckl_bench/resources/configs/openai.example.json
+  s_0e17df91604878::t_9b05fab4b65664 1-6
+ckl_bench/resources/configs/openrouter.example.json
+  s_0e17df91604878::t_4243376b6211c8 1-7
+ckl_bench/web/index.html
+  s_0e17df91604878::t_cbde452c2a3954 143,211-212
+scripts/sync_resources.py
+  s_0e17df91604878::t_605decf3d47f81 2,5-6,8,11-13,16-23,25-28,31-32,35-48,51-56,59-68,71-72
+web/package-lock.json
+  s_0e17df91604878::t_b1a4950dc83f93 10-12
+web/package.json
+  s_0e17df91604878::t_c709bfeafc077a 6-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2d40f9d54870877bac0ee8e273309e32fa7b2712",
+  "prompts": {},
+  "sessions": {
+    "s_0e17df91604878": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a251e7c4500d2f461",
+        "model": "unknown"
+      },
+      "human_author": "cklxx <q1293822641@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
